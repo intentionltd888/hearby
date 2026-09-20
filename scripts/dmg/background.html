@@ -1,0 +1,25 @@
+<!DOCTYPE html><html lang="zh-Hant-TW"><head><meta charset="utf-8">
+<!-- Hearby DMG 背景 v2（2026-09-17）：720×460 pt。出圖：headless Chrome --window-size=720,460 --force-device-scale-factor=2 → 1440×920，make-dmg.sh 會標 DPI 144。
+     圖示位置＝make-dmg.sh 的 {230,200}（Hearby）與 {490,200}（Applications），圖示 112pt，標籤在 y≈270。
+     兩顆字標一律用相對路徑引用倉內 Sources/HearbyUI/Resources/Brand/（商標資產只住那一處，見該夾 TRADEMARK.md）；
+     「Powered by」那顆在倉內是白色 template 圖，這裡用 filter:brightness(0) 壓成黑。 -->
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:720px;height:460px;overflow:hidden;background:#fff}
+.bg{position:relative;width:720px;height:460px;color:#0C0C0E;--en:"Helvetica Neue",Helvetica,Arial,sans-serif;--zh:"Noto Sans TC","PingFang TC",sans-serif;--m:48px;-webkit-font-smoothing:antialiased}
+.slogan{position:absolute;left:var(--m);top:40px;font-family:var(--en);font-weight:700;font-size:34px;line-height:1.15;letter-spacing:-.01em}
+.micro{font-family:var(--en);font-weight:700;font-size:12px;line-height:1.5;letter-spacing:.01em}
+.tr{position:absolute;right:var(--m);top:44px;text-align:right;color:#6C7674}
+.arrow{position:absolute;left:300px;top:186px;width:120px;height:28px}
+.body{position:absolute;left:var(--m);right:var(--m);top:306px;font-family:var(--zh);font-weight:500;font-size:14px;line-height:1.7}
+.body .s{display:block;font-size:12px;color:#6C7674;margin-top:1px}
+.foot{position:absolute;left:var(--m);right:var(--m);bottom:68px;display:flex;justify-content:space-between;align-items:center}
+.pb{display:inline-flex;align-items:center;gap:6px;color:#6C7674}.pb img{height:9px;width:auto;filter:brightness(0)}
+.lt{height:24px;width:auto}
+</style></head><body><div class="bg">
+  <div class="slogan">Every word<br>they say.</div>
+  <div class="tr micro">Hearby<br>macOS 14+ · Apple silicon</div>
+  <svg class="arrow" viewBox="0 0 120 28" fill="none" stroke="#0C0C0E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14H112"/><path d="M100 5l12 9-12 9"/></svg>
+  <div class="body">把 Hearby 拖進右邊的「應用程式」，或直接雙擊 Hearby，它會自己放進去並打開。<span class="s">第一次打開會請你允許麥克風與螢幕錄製（收系統聲音用），照著做就好。</span></div>
+  <div class="foot"><span class="pb micro">Powered by <img src="../../Sources/HearbyUI/Resources/Brand/intention_wordmark.png"></span><img class="lt" src="../../Sources/HearbyUI/Resources/Brand/hearby_logotype.png"></div>
+</div></body></html>

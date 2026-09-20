@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>zh_TW</string>
+	<key>CFBundleDisplayName</key>
+	<string>Hearby</string>
+	<key>CFBundleExecutable</key>
+	<string>Hearby</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>ltd.intention.werehear</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>zh_TW</string>
+		<string>zh-Hant</string>
+		<string>en</string>
+	</array>
+	<key>CFBundleName</key>
+	<string>Hearby</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>2.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>18</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Hearby 需要錄製系統聲音，才能收到線上會議另一端的聲音。只在你選「線上會議」時才會用到。</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Hearby 需要麥克風來錄下你這一側的發言。聲音只在這台電腦上處理。</string>
+</dict>
+</plist>

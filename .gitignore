@@ -1,0 +1,18 @@
+# 引擎二進位：不散布在原始碼倉裡（用 scripts/vendor-fetch.sh 準備）
+vendor/
+
+# SwiftPM 與建置產物
+.build/
+.swiftpm/
+build/
+build-*/
+
+# 備份與系統雜物
+*.bak
+*.bak-*
+.DS_Store
+
+# 本機開發設定
+.claude/
+# 公證用的 notarytool 鑰匙圈 profile 名（每台機器自己的，見 scripts/notarize.sh）
+.notary-profile

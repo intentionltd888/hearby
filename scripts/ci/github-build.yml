@@ -1,0 +1,25 @@
+# GitHub Actions 的建置設定（目前停用、只是放在這裡）。
+# 要啟用：把這個檔搬到 .github/workflows/build.yml。注意兩件事——
+#   1. 推送含 workflow 的 commit，Git 憑證要有 `workflow` 權限。
+#   2. 引擎（vendor/）不進 git；「assemble .app」那一步要先跑 scripts/vendor-fetch.sh 或 scripts/vendor-build.sh，否則會失敗。
+name: build
+on: [push, pull_request]
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: swift build
+        run: swift build -c release --product Hearby
+      - name: swift test
+        run: swift test
+      - name: clean check
+        run: bash scripts/check-clean.sh
+      - name: assemble .app
+        run: bash build.sh
+      - name: zip
+        run: cd build && zip -r -y Hearby.app.zip Hearby.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Hearby.app
+          path: build/Hearby.app.zip
