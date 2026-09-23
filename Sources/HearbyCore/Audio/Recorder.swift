@@ -1,7 +1,8 @@
 // DualRecorder — 雙軌錄音（介面層切割：睡眠通知改由殼呼叫 noteSleep／noteWake）
-//   軌 1（房間裡）：麥克風 AVAudioEngine → mic.wav
+//   軌 1（房間裡）：麥克風 AVAudioEngine → mic.wav；IO 單元直接綁在預設輸入裝置上，不經過聲音輸出（見 bindMicToDefaultInput）
 //   軌 2（電腦裡）：系統聲音 → system.wav；macOS 14.4+ 走 Core Audio process tap（純音訊權限，
 //   不在「螢幕錄製」那類每次更新重問的名單），14.0–14.3 退路 ScreenCaptureKit。
+//   tap 要有輸出裝置在跑才送 buffer，所以兩軌模式另在預設輸出上跑一條只送靜音的 IOProc（見 startOutputKeepAlive）。
 // 兩軌皆 16 kHz mono s16 wav，whisper 可直接吃。
 //
 // 收音來源三選：room＝只開麥克風（零系統聲權限）；online／mixed＝兩軌。
@@ -41,6 +42,8 @@ public final class DualRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
     private var sysConverterInFormat: AVAudioFormat?
     private var micConverterInFormat: AVAudioFormat?
     private var configObserver: NSObjectProtocol?
+    private var micDeviceID = AudioDeviceID(0)  // IO 單元現在綁著的輸入裝置；0＝沒綁上（走系統的聚合裝置）
+    private var defaultInputListener: AudioObjectPropertyListenerBlock?
     public private(set) var micInterrupted = false
     public private(set) var micDead = false
     public var micRecovered = false
@@ -52,6 +55,8 @@ public final class DualRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
     private var aggregateID: AudioObjectID = 0
     private var tapProcID: AudioDeviceIOProcID?
     private var tapFormat: AVAudioFormat?
+    private var keepAliveDevice = AudioDeviceID(0)
+    private var keepAliveProcID: AudioDeviceIOProcID?
     public private(set) var systemAudioMode = "none"  // none／tap／sck
 
     private let levelLock = NSLock()
@@ -108,8 +113,12 @@ public final class DualRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         var warnings: [String] = []
         let micOK = await AVCaptureDevice.requestAccess(for: .audio)
-        guard micOK else { throw HearbyError("麥克風權限未授權：系統設定 → 隱私權與安全性 → 麥克風 → 開啟 Hearby") }
+        guard micOK else {
+            HearbyLog.write("rec mic start fail: 麥克風權限未授權")
+            throw HearbyError("麥克風權限未授權：系統設定 → 隱私權與安全性 → 麥克風 → 開啟 Hearby")
+        }
         try startMic()
+        startedAt = Date()  // mic.wav 從這裡開始；系統聲音那軌起不來時可能要等約 10 秒，計時不能從那之後才算
         if source.wantsSystemAudio {
             do {
                 try await startSystem()
@@ -119,23 +128,36 @@ public final class DualRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
                 warnings.append("系統聲音沒錄到（線上另一端的聲音會缺）：\(error.localizedDescription)。這場先用麥克風錄，內容照樣完整。")
             }
         }
-        startedAt = Date()
         return warnings
     }
 
     private func startMic() throws {
-        micFile = try CrashSafeWavWriter(url: dir.appendingPathComponent("mic.wav"))
-        try installMicTapAndStart()
+        let t0 = Date()
+        do {
+            micFile = try CrashSafeWavWriter(url: dir.appendingPathComponent("mic.wav"))
+            try installMicTapAndStart()
+        } catch {
+            // 畫面只給一句話；原始錯誤與花了多久記在這裡（裝置卡住的樣子＝等約 10 秒後回 'stop'）
+            HearbyLog.write(String(format: "rec mic start fail %.1fs: ", Date().timeIntervalSince(t0)) + "\(error)")
+            throw error
+        }
         configObserver = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil
         ) { [weak self] _ in DispatchQueue.main.async { self?.handleEngineConfigChange() } }
+        // IO 單元綁在固定裝置上之後，系統換預設麥克風（插拔耳機、在控制中心換）engine 不會自己跟；由這裡接手，照舊跟著預設走
+        let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in self?.handleDefaultInputChange() }
+        var addr = AudioDevices.defaultInputAddress
+        if AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &addr, .main, listener) == noErr {
+            defaultInputListener = listener
+        }
     }
 
     private func installMicTapAndStart() throws {
         let input = engine.inputNode
+        let bound = bindMicToDefaultInput()
         let inFormat = input.inputFormat(forBus: 0)
         guard inFormat.sampleRate > 0 else { throw HearbyError("找不到麥克風輸入裝置") }
-        HearbyLog.write("rec mic dev=\(AudioDevices.defaultInputName() ?? "?") sr=\(Int(inFormat.sampleRate)) ch=\(inFormat.channelCount)")
+        HearbyLog.write("rec mic dev=\(AudioDevices.defaultInputName() ?? "?") bind=\(bound) sr=\(Int(inFormat.sampleRate)) ch=\(inFormat.channelCount)")
         micConverter = AVAudioConverter(from: inFormat, to: micOutFormat)
         micConverterInFormat = inFormat
         input.installTap(onBus: 0, bufferSize: 4096, format: inFormat) { [weak self] buf, _ in
@@ -161,19 +183,31 @@ public final class DualRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
         try engine.start()
     }
 
-    private func handleEngineConfigChange() {
+    private func handleEngineConfigChange(_ why: String = "config change") {
         guard !isStopping else { return }
+        // 綁裝置這個動作本身也會讓 engine 發一次設定變更，而且晚一點才送到（開錄後約 0.1 秒）。
+        // engine 真的因硬體變更停下來時 isRunning 已經是 false；還在跑、綁的也還是預設麥克風＝沒有要接的，重接反而白白斷一截
+        if engine.isRunning, micDeviceID != 0, micDeviceID == AudioDevices.defaultInputID() {
+            HearbyLog.write("rec mic \(why) ignored: still running on dev \(micDeviceID)")
+            return
+        }
         micInterrupted = true
-        HearbyLog.write("rec mic config change → dev=\(AudioDevices.defaultInputName() ?? "?")")
+        HearbyLog.write("rec mic \(why) → dev=\(AudioDevices.defaultInputName() ?? "?")")
         guard !retryInFlight else { return }
         retryInFlight = true
         retapAttempts = 0
         attemptRetap()
     }
 
+    private func handleDefaultInputChange() {
+        guard !isStopping, AudioDevices.defaultInputID() != micDeviceID else { return }
+        handleEngineConfigChange("default input change")
+    }
+
     private func attemptRetap() {
         guard !isStopping else { retryInFlight = false; return }
         engine.inputNode.removeTap(onBus: 0)
+        engine.stop()  // 預設麥克風換了的時候 engine 還在舊裝置上跑，換綁前先停
         setMic(0)
         do {
             try installMicTapAndStart()
@@ -181,6 +215,7 @@ public final class DualRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
             if micDead { micDead = false; micRecovered = true }
         } catch {
             retapAttempts += 1
+            HearbyLog.write("rec mic retap fail #\(retapAttempts): \(error)")
             if retapAttempts <= 10 {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.attemptRetap() }
             } else {
@@ -191,10 +226,35 @@ public final class DualRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
         }
     }
 
+    /// 麥克風這一軌不經過聲音輸出：AVAudioEngine 預設把「預設輸入＋預設輸出」組成一顆私有聚合裝置一起啟動，
+    /// 預設輸出（例如 DisplayPort 螢幕）的音訊卡住時，啟動要等約 10 秒後回 'stop'，麥克風好好的也錄不到。
+    /// 這一軌用不到輸出，所以把 IO 單元直接綁在這一刻的預設輸入裝置上（系統聲音那一軌是另一條路，不經過這裡）。
+    /// 已經綁在同一顆就不重設。回傳給 log 看的裝置代號；綁不上＝照舊走系統的聚合裝置。
+    private func bindMicToDefaultInput() -> String {
+        guard let dev = AudioDevices.defaultInputID(), let unit = engine.inputNode.audioUnit else {
+            micDeviceID = 0
+            return "default"
+        }
+        var cur = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        if AudioUnitGetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &cur, &size) == noErr, cur == dev {
+            micDeviceID = dev
+            return "\(dev)"
+        }
+        var id = dev
+        let st = AudioUnitSetProperty(
+            unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &id,
+            UInt32(MemoryLayout<AudioDeviceID>.size))
+        micDeviceID = st == noErr ? dev : 0
+        return st == noErr ? "\(dev)" : "default(bind \(st))"
+    }
+
     // MARK: 系統聲：process tap（14.4+）→ SCK 退路
 
     private func startSystem() async throws {
         sysFile = try CrashSafeWavWriter(url: dir.appendingPathComponent("system.wav"))
+        // 輸出起不來＝tap 等不到任何 buffer，卡著的 tap 還會讓之後的麥克風重接跟著卡住：直接回報，不接 tap、不退 SCK
+        try startOutputKeepAlive()
         if #available(macOS 14.4, *) {
             do {
                 try startProcessTap()
@@ -207,6 +267,34 @@ public final class DualRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
         }
         try await startSCK()
         systemAudioMode = "sck"
+    }
+
+    /// process tap 只在「有輸出裝置在跑」時才送 buffer；沒有任何 app 出聲時 system.wav 會停住，兩軌時間軸就對不上。
+    /// 以前是麥克風的 AVAudioEngine 順便把預設輸出跑起來（預設輸入＋預設輸出的聚合裝置）；麥克風改綁輸入裝置後，
+    /// 由這裡在預設輸出上跑一條只送靜音的 IOProc，效果同以前（SCK 退路也一樣，維持以前的條件）。
+    /// 預設輸出起不來（例如螢幕的音訊卡住，約 10 秒後回 'stop'）就 throw。
+    private func startOutputKeepAlive() throws {
+        guard let dev = AudioDevices.defaultOutputID() else { throw HearbyError("找不到聲音輸出裝置") }
+        let name = AudioDevices.name(dev) ?? "\(dev)"
+        var procID: AudioDeviceIOProcID?
+        // queue 給 nil：直接在 IO 執行緒上填靜音，不跟 sysQueue 上寫檔的 tap 搶
+        var st = AudioDeviceCreateIOProcIDWithBlock(&procID, dev, nil) { _, _, _, outData, _ in
+            for b in UnsafeMutableAudioBufferListPointer(outData) {
+                if let p = b.mData { memset(p, 0, Int(b.mDataByteSize)) }
+            }
+        }
+        guard st == noErr, let pid = procID else { throw HearbyError("聲音輸出裝置「\(name)」接不上（\(st)）") }
+        let t0 = Date()
+        st = AudioDeviceStart(dev, pid)
+        let secs = String(format: "%.1fs", Date().timeIntervalSince(t0))
+        guard st == noErr else {
+            AudioDeviceDestroyIOProcID(dev, pid)
+            HearbyLog.write("sysaudio keepalive fail \(secs) dev=\(name) st=\(st)")
+            throw HearbyError("聲音輸出裝置「\(name)」沒有回應")
+        }
+        keepAliveDevice = dev
+        keepAliveProcID = pid
+        HearbyLog.write("sysaudio keepalive dev=\(name) \(secs)")
     }
 
     @available(macOS 14.4, *)
@@ -329,6 +417,11 @@ public final class DualRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
             if let b = sleepBegan { _sleepSeconds += Date().timeIntervalSince(b); sleepBegan = nil }
         }
         if let o = configObserver { NotificationCenter.default.removeObserver(o); configObserver = nil }
+        if let l = defaultInputListener {
+            var addr = AudioDevices.defaultInputAddress
+            AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &addr, .main, l)
+            defaultInputListener = nil
+        }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         setMic(0); setSys(0)
@@ -346,6 +439,11 @@ public final class DualRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
         if tapID != 0 {
             if #available(macOS 14.4, *) { AudioHardwareDestroyProcessTap(tapID) }
             tapID = 0
+        }
+        if let pid = keepAliveProcID {
+            AudioDeviceStop(keepAliveDevice, pid)
+            AudioDeviceDestroyIOProcID(keepAliveDevice, pid)
+            keepAliveProcID = nil
         }
         micFile?.close(); micFile = nil
         sysQueue.sync { self.sysFile?.close(); self.sysFile = nil }
