@@ -3,6 +3,8 @@
 開會按一下，結束就有一份紀錄。紀錄存在你自己的電腦裡、是純文字，你用哪個 AI 都能接著討論；
 開的會越多，它越懂你在做什麼。中文英文夾著講也聽得準，錄音留著隨時點回去聽，不用月費。
 
+macOS 與 Windows 都有。<!-- windows -->
+
 ## 它做什麼
 
 - **錄音**：麥克風與電腦裡的聲音分兩軌錄（同一個房間開會只要麥克風，不需要系統聲音權限）；錄音檔以崩潰安全的方式寫入，整理中電腦睡著會暫停、醒來接著做並說明原因。
@@ -12,11 +14,13 @@
 - **記憶**：`~/Hearby/memory/` 五個純文字檔與 `index.json`，讓你的 AI 知道認識的人、在談的事、還沒完成的事。
 - **安裝**：DMG 裡拖進「應用程式」或直接雙擊都能裝；四頁設定精靈；`--doctor --deep` 體檢。
 
-還沒做：自動更新、會前準備自動帶入。
+還沒做：自動更新（macOS 版；Windows 版有）、會前準備自動帶入。
 
 ## 下載
 
 [**下載 Hearby.dmg**](https://github.com/intentionltd888/hearby/releases/latest/download/Hearby.dmg)（Apple Silicon 的 Mac，macOS 14 以上；已通過 Apple 公證）。打開 DMG，把 Hearby 拖進「應用程式」，或直接雙擊它。
+
+**Windows**：到 [Releases](https://github.com/intentionltd888/hearby/releases) 找標題有「Windows」的版本，下載 `Hearby-Setup.exe`（目前 1.0.0：[直接下載](https://github.com/intentionltd888/hearby/releases/download/win-v1.0.0/Hearby-Setup.exe)；Windows 10 22H2／Windows 11，x64）。安裝檔沒有數位簽章：Windows 會跳「Windows 已保護您的電腦」→ 按「其他資訊」→「仍要執行」。不需要系統管理員權限，會自動更新。Windows 版的說明與跟 macOS 版的差別見 [windows/README.md](windows/README.md)。
 
 所有版本在 [Releases](https://github.com/intentionltd888/hearby/releases)。哪些東西會離開你的電腦，寫在 [PRIVACY.md](PRIVACY.md)。
 
@@ -58,6 +62,8 @@ Sources/HearbyUI     設計系統（軟浮雕材質）＋畫面；Resources/Bran
 Sources/HearbyApp    殼：選單列圖示、小面板、一個視窗、精靈、CLI 旗標
 Tests/               幻聽回歸、清理、匯出、記憶寫入紀律
 templates/           Word 三公版、pdf.html、CLAUDE.md／AGENTS.md 範本
+windows/             Windows 版（C#／WPF）：Hearby.Core（核心的 C# 版）、Hearby.App（殼）、合約測試、build.sh——見 windows/README.md
+contract/            macOS 核心在固定輸入下的輸出：Windows 核心照著逐字比對（contract/README.md）
 scripts/             check-clean／check-binary（公開前清洗）、vendor-fetch／build、make-dmg、notarize、ship（出貨閘）
 ```
 
@@ -67,4 +73,4 @@ scripts/             check-clean／check-binary（公開前清洗）、vendor-fe
 ## 授權
 
 程式碼 MIT（見 `LICENSE`）。`Sources/HearbyUI/Resources/Brand/` 裡的標記、字標與圖示是商標，不在 MIT 範圍（見該夾 `TRADEMARK.md`）。
-第三方元件見 `THIRD-PARTY.md`；隱私見 `PRIVACY.md`；接第三方 AI 的規矩見 `COMPLIANCE.md`。
+第三方元件見 `THIRD-PARTY.md`（Windows 版見 `windows/THIRD-PARTY-WINDOWS.md`）；隱私見 `PRIVACY.md`；接第三方 AI 的規矩見 `COMPLIANCE.md`。

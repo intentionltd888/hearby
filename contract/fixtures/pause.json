@@ -1,0 +1,481 @@
+{
+  "cases" : [
+    {
+      "expected" : "0 秒",
+      "kind" : "durText",
+      "seconds" : 0
+    },
+    {
+      "expected" : "1 秒",
+      "kind" : "durText",
+      "seconds" : 1
+    },
+    {
+      "expected" : "40 秒",
+      "kind" : "durText",
+      "seconds" : 40
+    },
+    {
+      "expected" : "1 分鐘",
+      "kind" : "durText",
+      "seconds" : 59.600000000000001
+    },
+    {
+      "expected" : "1 分鐘",
+      "kind" : "durText",
+      "seconds" : 60
+    },
+    {
+      "expected" : "1 分鐘",
+      "kind" : "durText",
+      "seconds" : 89
+    },
+    {
+      "expected" : "2 分鐘",
+      "kind" : "durText",
+      "seconds" : 90
+    },
+    {
+      "expected" : "60 分鐘",
+      "kind" : "durText",
+      "seconds" : 3599
+    },
+    {
+      "expected" : "1 小時",
+      "kind" : "durText",
+      "seconds" : 3600
+    },
+    {
+      "expected" : "1 小時 1 分鐘",
+      "kind" : "durText",
+      "seconds" : 3660
+    },
+    {
+      "expected" : "2 小時",
+      "kind" : "durText",
+      "seconds" : 7200
+    },
+    {
+      "expected" : "2 小時 1 分鐘",
+      "kind" : "durText",
+      "seconds" : 7260.3999999999996
+    },
+    {
+      "expected" : "0 秒",
+      "kind" : "durText",
+      "seconds" : -5
+    },
+    {
+      "expected" : "240 小時",
+      "kind" : "durText",
+      "seconds" : 1.0000000000000001e+300
+    },
+    {
+      "atMs" : 120000,
+      "expected" : "（⏸ 14:32–14:44 暫停了 12 分鐘，這段沒有錄）",
+      "kind" : "markerLine",
+      "span" : {
+        "atSeconds" : 120,
+        "began" : "2026-09-20T06:32:00Z",
+        "ended" : "2026-09-20T06:44:00Z"
+      }
+    },
+    {
+      "atMs" : 300400,
+      "expected" : "（⏸ 14:47 暫停了 40 秒，這段沒有錄）",
+      "kind" : "markerLine",
+      "span" : {
+        "atSeconds" : 300.39999999999998,
+        "began" : "2026-09-20T06:47:00Z",
+        "ended" : "2026-09-20T06:47:40Z"
+      }
+    },
+    {
+      "atMs" : 600000,
+      "expected" : "（⏸ 14:53 暫停了 0 秒，這段沒有錄）",
+      "kind" : "markerLine",
+      "span" : {
+        "atSeconds" : 600,
+        "began" : "2026-09-20T06:53:20Z",
+        "ended" : null
+      }
+    },
+    {
+      "atMs" : 1199500,
+      "expected" : "（⏸ 15:03–15:05 暫停了 2 分鐘，這段沒有錄）",
+      "kind" : "markerLine",
+      "span" : {
+        "atSeconds" : 1199.5,
+        "began" : "2026-09-20T07:03:20Z",
+        "ended" : "2026-09-20T07:05:00Z"
+      }
+    },
+    {
+      "expected" : [
+        "- [00:00][我方] 開始",
+        "- [01:59][我方] 暫停前",
+        "（⏸ 14:32–14:44 暫停了 12 分鐘，這段沒有錄）",
+        "- [02:05][我方] 暫停後",
+        "（⏸ 14:47 暫停了 40 秒，這段沒有錄）",
+        "- [05:01][遠端] 第二段",
+        "- [15:00][我方] 最後"
+      ],
+      "kind" : "weave",
+      "lines" : [
+        {
+          "fromMs" : 0,
+          "text" : "- [00:00][我方] 開始"
+        },
+        {
+          "fromMs" : 119000,
+          "text" : "- [01:59][我方] 暫停前"
+        },
+        {
+          "fromMs" : 125000,
+          "text" : "- [02:05][我方] 暫停後"
+        },
+        {
+          "fromMs" : 301000,
+          "text" : "- [05:01][遠端] 第二段"
+        },
+        {
+          "fromMs" : 900000,
+          "text" : "- [15:00][我方] 最後"
+        }
+      ],
+      "mid" : [
+        {
+          "atSeconds" : 120,
+          "began" : "2026-09-20T06:32:00Z",
+          "ended" : "2026-09-20T06:44:00Z"
+        },
+        {
+          "atSeconds" : 300.39999999999998,
+          "began" : "2026-09-20T06:47:00Z",
+          "ended" : "2026-09-20T06:47:40Z"
+        }
+      ],
+      "note" : "中途暫停 2 次，共 13 分鐘（暫停時沒有錄音，逐字稿裡標了位置）",
+      "pauses" : [
+        {
+          "atSeconds" : 120,
+          "began" : "2026-09-20T06:32:00Z",
+          "ended" : "2026-09-20T06:44:00Z"
+        },
+        {
+          "atSeconds" : 300.39999999999998,
+          "began" : "2026-09-20T06:47:00Z",
+          "ended" : "2026-09-20T06:47:40Z"
+        },
+        {
+          "atSeconds" : 600,
+          "began" : "2026-09-20T06:53:20Z",
+          "ended" : null
+        },
+        {
+          "atSeconds" : 1199.5,
+          "began" : "2026-09-20T07:03:20Z",
+          "ended" : "2026-09-20T07:05:00Z"
+        }
+      ],
+      "totalSeconds" : 1200
+    },
+    {
+      "expected" : [
+        "- [00:00][我方] 開始",
+        "- [01:59][我方] 暫停前",
+        "（⏸ 14:32–14:44 暫停了 12 分鐘，這段沒有錄）",
+        "- [02:05][我方] 暫停後",
+        "（⏸ 14:47 暫停了 40 秒，這段沒有錄）",
+        "- [05:01][遠端] 第二段",
+        "- [15:00][我方] 最後"
+      ],
+      "kind" : "weave",
+      "lines" : [
+        {
+          "fromMs" : 0,
+          "text" : "- [00:00][我方] 開始"
+        },
+        {
+          "fromMs" : 119000,
+          "text" : "- [01:59][我方] 暫停前"
+        },
+        {
+          "fromMs" : 125000,
+          "text" : "- [02:05][我方] 暫停後"
+        },
+        {
+          "fromMs" : 301000,
+          "text" : "- [05:01][遠端] 第二段"
+        },
+        {
+          "fromMs" : 900000,
+          "text" : "- [15:00][我方] 最後"
+        }
+      ],
+      "mid" : [
+        {
+          "atSeconds" : 120,
+          "began" : "2026-09-20T06:32:00Z",
+          "ended" : "2026-09-20T06:44:00Z"
+        },
+        {
+          "atSeconds" : 300.39999999999998,
+          "began" : "2026-09-20T06:47:00Z",
+          "ended" : "2026-09-20T06:47:40Z"
+        }
+      ],
+      "note" : "中途暫停 2 次，共 13 分鐘（暫停時沒有錄音，逐字稿裡標了位置）",
+      "pauses" : [
+        {
+          "atSeconds" : 120,
+          "began" : "2026-09-20T06:32:00Z",
+          "ended" : "2026-09-20T06:44:00Z"
+        },
+        {
+          "atSeconds" : 300.39999999999998,
+          "began" : "2026-09-20T06:47:00Z",
+          "ended" : "2026-09-20T06:47:40Z"
+        },
+        {
+          "atSeconds" : 600,
+          "began" : "2026-09-20T06:53:20Z",
+          "ended" : null
+        },
+        {
+          "atSeconds" : 1199.5,
+          "began" : "2026-09-20T07:03:20Z",
+          "ended" : "2026-09-20T07:05:00Z"
+        }
+      ],
+      "totalSeconds" : 1199.9000000000001
+    },
+    {
+      "expected" : [
+        "- [00:00][我方] 開始",
+        "- [01:59][我方] 暫停前",
+        "（⏸ 14:32–14:44 暫停了 12 分鐘，這段沒有錄）",
+        "- [02:05][我方] 暫停後",
+        "（⏸ 14:47 暫停了 40 秒，這段沒有錄）",
+        "- [05:01][遠端] 第二段",
+        "- [15:00][我方] 最後"
+      ],
+      "kind" : "weave",
+      "lines" : [
+        {
+          "fromMs" : 0,
+          "text" : "- [00:00][我方] 開始"
+        },
+        {
+          "fromMs" : 119000,
+          "text" : "- [01:59][我方] 暫停前"
+        },
+        {
+          "fromMs" : 125000,
+          "text" : "- [02:05][我方] 暫停後"
+        },
+        {
+          "fromMs" : 301000,
+          "text" : "- [05:01][遠端] 第二段"
+        },
+        {
+          "fromMs" : 900000,
+          "text" : "- [15:00][我方] 最後"
+        }
+      ],
+      "mid" : [
+        {
+          "atSeconds" : 120,
+          "began" : "2026-09-20T06:32:00Z",
+          "ended" : "2026-09-20T06:44:00Z"
+        },
+        {
+          "atSeconds" : 300.39999999999998,
+          "began" : "2026-09-20T06:47:00Z",
+          "ended" : "2026-09-20T06:47:40Z"
+        }
+      ],
+      "note" : "中途暫停 2 次，共 13 分鐘（暫停時沒有錄音，逐字稿裡標了位置）",
+      "pauses" : [
+        {
+          "atSeconds" : 120,
+          "began" : "2026-09-20T06:32:00Z",
+          "ended" : "2026-09-20T06:44:00Z"
+        },
+        {
+          "atSeconds" : 300.39999999999998,
+          "began" : "2026-09-20T06:47:00Z",
+          "ended" : "2026-09-20T06:47:40Z"
+        },
+        {
+          "atSeconds" : 600,
+          "began" : "2026-09-20T06:53:20Z",
+          "ended" : null
+        },
+        {
+          "atSeconds" : 1199.5,
+          "began" : "2026-09-20T07:03:20Z",
+          "ended" : "2026-09-20T07:05:00Z"
+        }
+      ],
+      "totalSeconds" : 400
+    },
+    {
+      "kind" : "clock",
+      "pausedSeconds" : 180,
+      "pauses" : [
+        {
+          "atSeconds" : 60,
+          "began" : "2026-09-20T06:31:00Z",
+          "ended" : "2026-09-20T06:32:00Z"
+        },
+        {
+          "atSeconds" : 240,
+          "began" : "2026-09-20T06:36:40Z",
+          "ended" : "2026-09-20T06:38:40Z"
+        }
+      ],
+      "sleepSeconds" : 100,
+      "startedAt" : "2026-09-20T06:30:00Z",
+      "steps" : [
+        {
+          "currentPause" : 0,
+          "event" : "recorded",
+          "isPaused" : false,
+          "recorded" : 30,
+          "ret" : null,
+          "slept" : false,
+          "t" : 30
+        },
+        {
+          "currentPause" : 0,
+          "event" : "pause",
+          "isPaused" : true,
+          "recorded" : 60,
+          "ret" : true,
+          "slept" : false,
+          "t" : 60
+        },
+        {
+          "currentPause" : 30,
+          "event" : "recorded",
+          "isPaused" : true,
+          "recorded" : 60,
+          "ret" : null,
+          "slept" : false,
+          "t" : 90
+        },
+        {
+          "currentPause" : 0,
+          "event" : "resume",
+          "isPaused" : false,
+          "recorded" : 60,
+          "ret" : true,
+          "slept" : false,
+          "t" : 120
+        },
+        {
+          "currentPause" : 0,
+          "event" : "recorded",
+          "isPaused" : false,
+          "recorded" : 90,
+          "ret" : null,
+          "slept" : false,
+          "t" : 150
+        },
+        {
+          "currentPause" : 0,
+          "event" : "sleep",
+          "isPaused" : false,
+          "recorded" : 140,
+          "ret" : true,
+          "slept" : false,
+          "t" : 200
+        },
+        {
+          "currentPause" : 0,
+          "event" : "recorded",
+          "isPaused" : false,
+          "recorded" : 140,
+          "ret" : null,
+          "slept" : false,
+          "t" : 260
+        },
+        {
+          "currentPause" : 0,
+          "event" : "wake",
+          "isPaused" : false,
+          "recorded" : 140,
+          "ret" : true,
+          "slept" : true,
+          "t" : 300
+        },
+        {
+          "currentPause" : 0,
+          "event" : "pause",
+          "isPaused" : true,
+          "recorded" : 240,
+          "ret" : true,
+          "slept" : true,
+          "t" : 400
+        },
+        {
+          "currentPause" : 10,
+          "event" : "sleep",
+          "isPaused" : true,
+          "recorded" : 240,
+          "ret" : false,
+          "slept" : true,
+          "t" : 410
+        },
+        {
+          "currentPause" : 100,
+          "event" : "wake",
+          "isPaused" : true,
+          "recorded" : 240,
+          "ret" : false,
+          "slept" : true,
+          "t" : 500
+        },
+        {
+          "currentPause" : 0,
+          "event" : "resume",
+          "isPaused" : false,
+          "recorded" : 240,
+          "ret" : true,
+          "slept" : true,
+          "t" : 520
+        },
+        {
+          "currentPause" : 0,
+          "event" : "recorded",
+          "isPaused" : false,
+          "recorded" : 320,
+          "ret" : null,
+          "slept" : true,
+          "t" : 600
+        },
+        {
+          "currentPause" : 0,
+          "event" : "close",
+          "isPaused" : false,
+          "recorded" : 420,
+          "ret" : null,
+          "slept" : true,
+          "t" : 700
+        },
+        {
+          "currentPause" : 0,
+          "event" : "recorded",
+          "isPaused" : false,
+          "recorded" : 520,
+          "ret" : null,
+          "slept" : true,
+          "t" : 800
+        }
+      ]
+    }
+  ],
+  "contract" : 1,
+  "name" : "pause"
+}

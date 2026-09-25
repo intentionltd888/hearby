@@ -1,5 +1,7 @@
 # AGENTS.md — 給幫使用者把 Hearby 接好的 AI（Claude Code、Codex、Cursor、任何 agent）
 
+> 對方用的是 Windows？看 [windows/AGENTS-WINDOWS.md](windows/AGENTS-WINDOWS.md)（安裝後也在 `%LOCALAPPDATA%\HearbyApp\current\AGENTS.md`）。<!-- windows -->
+
 你正在幫一個人把 **Hearby**（macOS 會議紀錄，開源）在他的 Mac 上接好。
 目標只有一個：**他開會前按一下、開完會資料夾裡就有一份紀錄，而且你（他的 AI）讀得到那份紀錄。**
 驗收＝這件事真的發生，不是「某個檢查通過」。全程不要動他的其他設定、不要刪東西、不要幫他填 API 金鑰。

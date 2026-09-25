@@ -1,0 +1,42 @@
+{
+  "cases" : [
+    {
+      "amp" : 60,
+      "expected" : 382.28167724609375,
+      "kind" : "bursty",
+      "peakLevel" : 0.00732421875
+    },
+    {
+      "amp" : 8000,
+      "expected" : null,
+      "kind" : "bursty",
+      "peakLevel" : 0.97655224800109863
+    },
+    {
+      "amp" : 0,
+      "expected" : null,
+      "kind" : "bursty",
+      "peakLevel" : 0
+    },
+    {
+      "amp" : 3,
+      "expected" : null,
+      "kind" : "bursty",
+      "peakLevel" : 0.0003662109375
+    },
+    {
+      "amp" : 200,
+      "expected" : null,
+      "kind" : "bursty",
+      "peakLevel" : 0.0244140625
+    },
+    {
+      "amp" : 50,
+      "expected" : null,
+      "kind" : "steady",
+      "peakLevel" : 0.006103515625
+    }
+  ],
+  "contract" : 1,
+  "name" : "quiet_boost"
+}

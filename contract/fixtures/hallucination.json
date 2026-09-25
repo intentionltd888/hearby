@@ -1,0 +1,166 @@
+{
+  "cases" : [
+    {
+      "durationMs" : null,
+      "expected" : true,
+      "text" : "謝謝觀看"
+    },
+    {
+      "durationMs" : null,
+      "expected" : false,
+      "text" : "字幕由Amara.org社區提供"
+    },
+    {
+      "durationMs" : null,
+      "expected" : true,
+      "text" : "中文字幕志願者 李宗盛"
+    },
+    {
+      "durationMs" : null,
+      "expected" : true,
+      "text" : "請不吝點贊 訂閱 轉發 打賞支持明鏡與點點欄目"
+    },
+    {
+      "durationMs" : null,
+      "expected" : true,
+      "text" : "訂閱支持"
+    },
+    {
+      "durationMs" : null,
+      "expected" : false,
+      "text" : "要不要訂閱"
+    },
+    {
+      "durationMs" : null,
+      "expected" : true,
+      "text" : "請訂閱"
+    },
+    {
+      "durationMs" : null,
+      "expected" : false,
+      "text" : "我們下週要訂閱新的雲端方案，還要評估成本"
+    },
+    {
+      "durationMs" : null,
+      "expected" : true,
+      "text" : "Thank you."
+    },
+    {
+      "durationMs" : null,
+      "expected" : true,
+      "text" : "you"
+    },
+    {
+      "durationMs" : null,
+      "expected" : true,
+      "text" : "thanks for watching"
+    },
+    {
+      "durationMs" : null,
+      "expected" : true,
+      "text" : "中文字幕:CM 李宗盛"
+    },
+    {
+      "durationMs" : null,
+      "expected" : false,
+      "text" : "今天我們開會討論第三季的預算"
+    },
+    {
+      "durationMs" : null,
+      "expected" : false,
+      "text" : "好"
+    },
+    {
+      "durationMs" : null,
+      "expected" : false,
+      "text" : "對"
+    },
+    {
+      "durationMs" : null,
+      "expected" : true,
+      "text" : ""
+    },
+    {
+      "durationMs" : null,
+      "expected" : true,
+      "text" : "優優獨播劇場——YoYo Television Series Exclusive"
+    },
+    {
+      "durationMs" : null,
+      "expected" : true,
+      "text" : "字幕:李宗盛"
+    },
+    {
+      "durationMs" : null,
+      "expected" : true,
+      "text" : "詞：李宗盛"
+    },
+    {
+      "durationMs" : null,
+      "expected" : false,
+      "text" : "李宗盛的歌很好聽"
+    },
+    {
+      "durationMs" : null,
+      "expected" : true,
+      "text" : "♪"
+    },
+    {
+      "durationMs" : null,
+      "expected" : true,
+      "text" : "(音樂)"
+    },
+    {
+      "durationMs" : 20000,
+      "expected" : true,
+      "text" : "謝謝觀看，我們下次再見"
+    },
+    {
+      "durationMs" : 30000,
+      "expected" : true,
+      "text" : "中文字幕 請不吝點贊"
+    },
+    {
+      "durationMs" : null,
+      "expected" : true,
+      "text" : "以上言論不代表本台立場"
+    },
+    {
+      "durationMs" : null,
+      "expected" : true,
+      "text" : "這是一條語音備忘錄"
+    },
+    {
+      "durationMs" : null,
+      "expected" : true,
+      "text" : "點贊"
+    },
+    {
+      "durationMs" : null,
+      "expected" : true,
+      "text" : "大家記得點贊"
+    },
+    {
+      "durationMs" : 12000,
+      "expected" : true,
+      "text" : "感謝收看 下集更精彩"
+    },
+    {
+      "durationMs" : null,
+      "expected" : false,
+      "text" : "MING PAO CANADA MING PAO TORONTO"
+    },
+    {
+      "durationMs" : 30000,
+      "expected" : false,
+      "text" : "這一段講得很慢但是真的內容"
+    },
+    {
+      "durationMs" : null,
+      "expected" : true,
+      "text" : "影片即將結束，謝謝大家"
+    }
+  ],
+  "contract" : 1,
+  "name" : "hallucination"
+}

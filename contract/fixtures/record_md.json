@@ -1,0 +1,427 @@
+{
+  "cases" : [
+    {
+      "clientVersion" : "# 會議記錄 2026-08-01 10:00\n> Hearby 錄音｜時長 1小時2分｜舊的｜標題\n> 與會者（你填的）：甲、乙\n\n## 摘要\n（本場僅整理逐字稿，未附 AI 摘要）\n## 待辦\n- [x] 已完成的事（甲；明天）\n- [ ] 沒完成的事（乙）\n- [ ] 無\n![](圖.png)\n\n",
+      "declaredAttendees" : "甲、乙",
+      "images" : [
+        "圖.png"
+      ],
+      "md" : "# 會議記錄 2026-08-01 10:00\n> Hearby 錄音｜時長 1小時2分｜舊的｜標題\n> 音檔：/tmp/x.m4a\n> 與會者（你填的）：甲、乙\n\n## 摘要\n（AI 整理失敗：逾時）\n## 待辦\n- [x] 已完成的事（甲；明天）\n- [ ] 沒完成的事（乙）\n- [ ] 無\n![](圖.png)\n\n---\n\n## 逐字稿\n- [00:01][我方] 內容",
+      "meta" : "Hearby 錄音｜時長 1小時2分｜舊的｜標題",
+      "name" : "legacy",
+      "parts" : {
+        "custom" : "舊的｜標題",
+        "date" : "2026-08-01 10:00",
+        "dur" : "1小時2分"
+      },
+      "people" : [
+        "甲",
+        "乙"
+      ],
+      "scene" : "meeting",
+      "sections" : [
+        {
+          "lines" : [
+            "甲",
+            "乙"
+          ],
+          "name" : "與會者"
+        },
+        {
+          "lines" : [
+            "（AI 整理失敗：逾時）"
+          ],
+          "name" : "摘要"
+        },
+        {
+          "lines" : [
+            "[00:01][我方] 內容"
+          ],
+          "name" : "逐字稿"
+        }
+      ],
+      "summaryText" : "（AI 整理失敗：逾時）",
+      "threeLines" : [
+        "（AI 整理失敗：逾時）。"
+      ],
+      "title" : "會議記錄 2026-08-01 10:00",
+      "todos" : [
+        {
+          "done" : true,
+          "due" : "明天",
+          "item" : "已完成的事",
+          "owner" : "甲"
+        },
+        {
+          "done" : false,
+          "due" : "",
+          "item" : "沒完成的事",
+          "owner" : "乙"
+        }
+      ],
+      "transcript" : "- [00:01][我方] 內容"
+    },
+    {
+      "clientVersion" : "# 筆記 2026-09-20 14:30\n\n> Hearby 錄音｜時長 3分0秒\n\n## 一句話\n這篇在講 Windows 版。\n## 內容\n**時程**\n先做骨架版。\n**預算**\n三十萬\n## 待辦\n- 無\n\n",
+      "declaredAttendees" : "",
+      "images" : [
+
+      ],
+      "md" : "# 筆記 2026-09-20 14:30\n\n> Hearby 錄音｜時長 3分0秒\n\n## 一句話\n這篇在講 Windows 版。\n## 內容\n**時程**\n先做骨架版。[00:12]\n**預算**\n三十萬 [01:05]\n## 待辦\n- 無\n\n---\n\n## 逐字稿\n- [00:12][我方] 骨架版",
+      "meta" : "Hearby 錄音｜時長 3分0秒",
+      "name" : "note",
+      "parts" : {
+        "custom" : "",
+        "date" : "2026-09-20 14:30",
+        "dur" : "3分0秒"
+      },
+      "people" : [
+
+      ],
+      "scene" : "note",
+      "sections" : [
+        {
+          "lines" : [
+            "這篇在講 Windows 版。"
+          ],
+          "name" : "一句話"
+        },
+        {
+          "lines" : [
+            "**時程**",
+            "先做骨架版。[00:12]",
+            "**預算**",
+            "三十萬 [01:05]"
+          ],
+          "name" : "內容"
+        },
+        {
+          "lines" : [
+            "[00:12][我方] 骨架版"
+          ],
+          "name" : "逐字稿"
+        }
+      ],
+      "summaryText" : "這篇在講 Windows 版。",
+      "threeLines" : [
+        "時程",
+        "預算"
+      ],
+      "title" : "筆記 2026-09-20 14:30",
+      "todos" : [
+
+      ],
+      "transcript" : "- [00:12][我方] 骨架版"
+    },
+    {
+      "clientVersion" : "# 訪談 2026-09-20 14:30\n\n> Hearby 錄音｜時長 3分0秒｜專訪\n\n## 摘要\n受訪者談 Windows 版。第二句。第三句。第四句。\n## 受訪者\n- 受訪者 — 回答\n## 內容\n**問：何時？**\n答：先做骨架版。\n## 引言\n- 「先做骨架版」\n- 「預算三十萬」\n## 待辦\n- 無\n\n",
+      "declaredAttendees" : "",
+      "images" : [
+
+      ],
+      "md" : "# 訪談 2026-09-20 14:30\n\n> Hearby 錄音｜時長 3分0秒｜專訪\n\n## 摘要\n受訪者談 Windows 版。第二句。第三句。第四句。\n## 受訪者\n- 受訪者 — 回答\n## 內容\n**問：何時？**\n答：先做骨架版。[00:12]\n## 引言\n- 「先做骨架版」[00:12]\n- 「預算三十萬」[1:01:05]\n## 待辦\n- 無\n\n---\n\n## 逐字稿\n- [00:12][遠端] 先做骨架版",
+      "meta" : "Hearby 錄音｜時長 3分0秒｜專訪",
+      "name" : "interview",
+      "parts" : {
+        "custom" : "專訪",
+        "date" : "2026-09-20 14:30",
+        "dur" : "3分0秒"
+      },
+      "people" : [
+
+      ],
+      "scene" : "interview",
+      "sections" : [
+        {
+          "lines" : [
+            "受訪者談 Windows 版。第二句。第三句。第四句。"
+          ],
+          "name" : "摘要"
+        },
+        {
+          "lines" : [
+            "受訪者 — 回答"
+          ],
+          "name" : "受訪者"
+        },
+        {
+          "lines" : [
+            "**問：何時？**",
+            "答：先做骨架版。[00:12]"
+          ],
+          "name" : "內容"
+        },
+        {
+          "lines" : [
+            "「先做骨架版」[00:12]",
+            "「預算三十萬」[1:01:05]"
+          ],
+          "name" : "引言"
+        },
+        {
+          "lines" : [
+            "[00:12][遠端] 先做骨架版"
+          ],
+          "name" : "逐字稿"
+        }
+      ],
+      "summaryText" : "受訪者談 Windows 版。第二句。第三句。第四句。",
+      "threeLines" : [
+        "「先做骨架版」",
+        "「預算三十萬」"
+      ],
+      "title" : "訪談 2026-09-20 14:30",
+      "todos" : [
+
+      ],
+      "transcript" : "- [00:12][遠端] 先做骨架版"
+    },
+    {
+      "clientVersion" : "# 會議紀錄 2026-09-20 14:30\n\n> Hearby 錄音｜時長 12分30秒｜週會\n\n## AI 會議摘要\n這場會議討論 Hearby 的 Windows 版。決定先做骨架版。預算三十萬。\n## 與會者\n- 王小明\n- 現場A\n## 重點\n**時程**\n- 骨架版先做半天\n- 預算三十萬\n## 決議\n- 先做骨架版\n## 開放問題\n- 要不要買憑證\n## 待辦\n- [ ] 準備測試機｜王小明｜明天\n- [ ] 寫文案｜現場A｜\n## 會前重點對照\n- 確認時程 → 先做骨架版",
+      "declaredAttendees" : "",
+      "images" : [
+
+      ],
+      "md" : "# 會議紀錄 2026-09-20 14:30\n\n> Hearby 錄音｜時長 12分30秒｜週會\n> 音檔：{AUDIO}\n> ⚠ 麥克風軌無聲，未聽打\n> 本機模型整理（qwen3:4b-instruct）：比雲端整理簡略，決議與待辦請對照逐字稿再看一次\n\n## AI 會議摘要\n這場會議討論 Hearby 的 Windows 版。決定先做骨架版。預算三十萬。\n## 與會者\n- 王小明 — 自我介紹\n- 現場A — 推測\n## 重點\n**時程**\n- 骨架版先做半天 [00:12]\n- 預算三十萬 [01:05]\n## 決議\n- 先做骨架版 [00:12]\n## 開放問題\n- 要不要買憑證 [02:10]\n## 待辦\n- [ ] 準備測試機｜王小明｜明天\n- [ ] 寫文案｜現場A｜\n## 會前重點對照\n- 確認時程 → 先做骨架版\n## 修正紀錄\n- 2026-09-01：名字改正\n\n---\n\n## 逐字稿\n- [00:12][我方] 骨架版先做半天\n- [01:05][遠端] 預算三十萬",
+      "meta" : "Hearby 錄音｜時長 12分30秒｜週會",
+      "name" : "meeting",
+      "parts" : {
+        "custom" : "週會",
+        "date" : "2026-09-20 14:30",
+        "dur" : "12分30秒"
+      },
+      "people" : [
+        "王小明",
+        "現場A"
+      ],
+      "scene" : "meeting",
+      "sections" : [
+        {
+          "lines" : [
+            "這場會議討論 Hearby 的 Windows 版。決定先做骨架版。預算三十萬。"
+          ],
+          "name" : "AI 會議摘要"
+        },
+        {
+          "lines" : [
+            "王小明 — 自我介紹",
+            "現場A — 推測"
+          ],
+          "name" : "與會者"
+        },
+        {
+          "lines" : [
+            "**時程**",
+            "骨架版先做半天 [00:12]",
+            "預算三十萬 [01:05]"
+          ],
+          "name" : "重點"
+        },
+        {
+          "lines" : [
+            "先做骨架版 [00:12]"
+          ],
+          "name" : "決議"
+        },
+        {
+          "lines" : [
+            "要不要買憑證 [02:10]"
+          ],
+          "name" : "開放問題"
+        },
+        {
+          "lines" : [
+            "確認時程 → 先做骨架版"
+          ],
+          "name" : "會前重點對照"
+        },
+        {
+          "lines" : [
+            "2026-09-01：名字改正",
+            "---"
+          ],
+          "name" : "修正紀錄"
+        },
+        {
+          "lines" : [
+            "[00:12][我方] 骨架版先做半天",
+            "[01:05][遠端] 預算三十萬"
+          ],
+          "name" : "逐字稿"
+        }
+      ],
+      "summaryText" : "這場會議討論 Hearby 的 Windows 版。決定先做骨架版。預算三十萬。",
+      "threeLines" : [
+        "骨架版先做半天",
+        "預算三十萬"
+      ],
+      "title" : "會議紀錄 2026-09-20 14:30",
+      "todos" : [
+        {
+          "done" : false,
+          "due" : "明天",
+          "item" : "準備測試機",
+          "owner" : "王小明"
+        },
+        {
+          "done" : false,
+          "due" : "",
+          "item" : "寫文案",
+          "owner" : "現場A"
+        }
+      ],
+      "transcript" : "- [00:12][我方] 骨架版先做半天\n- [01:05][遠端] 預算三十萬"
+    },
+    {
+      "clientVersion" : "# 會議紀錄 2026-09-20 14:30\n\n> Hearby 錄音｜時長 1分0秒\n\n## AI 會議摘要\n（本場僅整理逐字稿，未附 AI 摘要）\n\n",
+      "declaredAttendees" : "",
+      "images" : [
+
+      ],
+      "md" : "# 會議紀錄 2026-09-20 14:30\n\n> Hearby 錄音｜時長 1分0秒\n\n## AI 會議摘要\n（只有逐字稿：這場沒有接 AI 整理。）\n\n---\n\n## 逐字稿\n- [00:01][我方] 你好",
+      "meta" : "Hearby 錄音｜時長 1分0秒",
+      "name" : "transcript_only",
+      "parts" : {
+        "custom" : "",
+        "date" : "2026-09-20 14:30",
+        "dur" : "1分0秒"
+      },
+      "people" : [
+
+      ],
+      "scene" : "meeting",
+      "sections" : [
+        {
+          "lines" : [
+            "（只有逐字稿：這場沒有接 AI 整理。）",
+            "---"
+          ],
+          "name" : "AI 會議摘要"
+        },
+        {
+          "lines" : [
+            "[00:01][我方] 你好"
+          ],
+          "name" : "逐字稿"
+        }
+      ],
+      "summaryText" : "（只有逐字稿：這場沒有接 AI 整理。） ---",
+      "threeLines" : [
+        "（只有逐字稿：這場沒有接 AI 整理。",
+        "） ---。"
+      ],
+      "title" : "會議紀錄 2026-09-20 14:30",
+      "todos" : [
+
+      ],
+      "transcript" : "- [00:01][我方] 你好"
+    },
+    {
+      "clientVersion" : "",
+      "declaredAttendees" : "",
+      "images" : [
+
+      ],
+      "md" : "",
+      "meta" : "",
+      "name" : "empty",
+      "parts" : {
+        "custom" : "",
+        "date" : "",
+        "dur" : ""
+      },
+      "people" : [
+
+      ],
+      "scene" : "meeting",
+      "sections" : [
+
+      ],
+      "summaryText" : "",
+      "threeLines" : [
+
+      ],
+      "title" : "會議紀錄",
+      "todos" : [
+
+      ],
+      "transcript" : null
+    },
+    {
+      "due" : "期限",
+      "item" : "事項",
+      "name" : "todoParts",
+      "owner" : "負責人",
+      "raw" : "事項｜負責人｜期限"
+    },
+    {
+      "due" : "",
+      "item" : "事項",
+      "name" : "todoParts",
+      "owner" : "負責人",
+      "raw" : "事項｜負責人"
+    },
+    {
+      "due" : "",
+      "item" : "事項",
+      "name" : "todoParts",
+      "owner" : "",
+      "raw" : "事項"
+    },
+    {
+      "due" : "明天",
+      "item" : "事項",
+      "name" : "todoParts",
+      "owner" : "甲",
+      "raw" : "事項（甲；明天）"
+    },
+    {
+      "due" : "",
+      "item" : "事項",
+      "name" : "todoParts",
+      "owner" : "甲",
+      "raw" : "事項（甲）"
+    },
+    {
+      "due" : "",
+      "item" : "事項",
+      "name" : "todoParts",
+      "owner" : "",
+      "raw" : "  事項｜｜  "
+    },
+    {
+      "due" : "c｜d",
+      "item" : "a",
+      "name" : "todoParts",
+      "owner" : "b",
+      "raw" : "a｜b｜c｜d"
+    },
+    {
+      "name" : "sceneFromTitle",
+      "raw" : "# 訪談 x",
+      "scene" : "interview"
+    },
+    {
+      "name" : "sceneFromTitle",
+      "raw" : "# 筆記 x",
+      "scene" : "note"
+    },
+    {
+      "name" : "sceneFromTitle",
+      "raw" : "# 會議紀錄 x",
+      "scene" : "meeting"
+    },
+    {
+      "name" : "sceneFromTitle",
+      "raw" : "# 會議記錄 x",
+      "scene" : "meeting"
+    },
+    {
+      "name" : "sceneFromTitle",
+      "raw" : "隨便",
+      "scene" : "meeting"
+    }
+  ],
+  "contract" : 1,
+  "name" : "record_md"
+}

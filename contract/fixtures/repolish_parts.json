@@ -1,0 +1,70 @@
+{
+  "cases" : [
+    {
+      "expected" : [
+        "王小明",
+        "現場經理王小明",
+        "陳美玲（行銷部）",
+        "Kevin"
+      ],
+      "fn" : "realAttendees",
+      "people" : [
+        "王小明（我方）",
+        "現場A（推測）",
+        "遠端 2",
+        "Speaker B",
+        "現場經理王小明",
+        "受訪者",
+        "陳美玲（行銷部）",
+        "電話端",
+        "我方",
+        "Kevin(遠端)"
+      ]
+    },
+    {
+      "expected" : [
+
+      ],
+      "fn" : "realAttendees",
+      "people" : [
+
+      ]
+    },
+    {
+      "expected" : [
+        "訪談者甲乙丙"
+      ],
+      "fn" : "realAttendees",
+      "people" : [
+        "訪談者甲乙丙"
+      ]
+    },
+    {
+      "expected" : "## 待辦\n- [x] 準備測試機｜王小明｜明天\n- [ ] 寫文案｜｜\n- [x] 已經做完的\n- [ ] 新的事項",
+      "fn" : "restoreTodoChecks",
+      "md" : "## 待辦\n- [ ] 準備測試機｜王小明｜明天\n- [ ] 寫文案｜｜\n- [x] 已經做完的\n- [ ] 新的事項",
+      "oldTodos" : [
+        {
+          "done" : true,
+          "due" : "明天",
+          "item" : "準備測試機",
+          "owner" : "王小明"
+        },
+        {
+          "done" : false,
+          "due" : "",
+          "item" : "寫文案",
+          "owner" : ""
+        },
+        {
+          "done" : true,
+          "due" : "",
+          "item" : "不在新版的",
+          "owner" : ""
+        }
+      ]
+    }
+  ],
+  "contract" : 1,
+  "name" : "repolish_parts"
+}

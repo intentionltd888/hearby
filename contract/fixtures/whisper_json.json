@@ -1,0 +1,136 @@
+{
+  "cases" : [
+    {
+      "json" : "{\"transcription\":[{\"offsets\":{\"from\":0,\"to\":1200},\"text\":\" 今天要討論產品更新,對\"},{\"offsets\":{\"from\":1200,\"to\":2000},\"text\":\"謝謝觀看\"},{\"offsets\":{\"from\":2000,\"to\":3000},\"text\":\"今天要討論產品更新，對\"},{\"offsets\":{\"from\":3000,\"to\":4000},\"text\":\"預算是三十萬.\"}]}",
+      "loops" : [
+
+      ],
+      "offsetMs" : 60000,
+      "rawRepeat" : 0,
+      "segs" : [
+        {
+          "fromMs" : 60000,
+          "text" : "今天要討論產品更新，對",
+          "toMs" : 61200,
+          "who" : "我方"
+        },
+        {
+          "fromMs" : 63000,
+          "text" : "預算是三十萬。",
+          "toMs" : 64000,
+          "who" : "我方"
+        }
+      ],
+      "who" : "我方"
+    },
+    {
+      "json" : "{\"transcription\":[{\"offsets\":{\"from\":0,\"to\":3000},\"text\":\" 好的好的\"},{\"offsets\":{\"from\":3000,\"to\":6000},\"text\":\" 好的好的\"},{\"offsets\":{\"from\":6000,\"to\":9000},\"text\":\" 好的好的\"},{\"offsets\":{\"from\":9000,\"to\":12000},\"text\":\" 好的好的\"},{\"offsets\":{\"from\":12000,\"to\":15000},\"text\":\" 好的好的\"},{\"offsets\":{\"from\":15000,\"to\":18000},\"text\":\" 好的好的\"},{\"offsets\":{\"from\":18000,\"to\":21000},\"text\":\" 好的好的\"},{\"offsets\":{\"from\":21000,\"to\":23000},\"text\":\"換個話題\"}]}",
+      "loops" : [
+        [
+          0,
+          21000
+        ]
+      ],
+      "offsetMs" : 0,
+      "rawRepeat" : 0.75,
+      "segs" : [
+        {
+          "fromMs" : 0,
+          "text" : "好的好的",
+          "toMs" : 3000,
+          "who" : "遠端"
+        },
+        {
+          "fromMs" : 21000,
+          "text" : "換個話題",
+          "toMs" : 23000,
+          "who" : "遠端"
+        }
+      ],
+      "who" : "遠端"
+    },
+    {
+      "json" : "{\"transcription\":[{\"text\":\" 沒有時間戳\"},{\"offsets\":{\"from\":5000,\"to\":6000},\"text\":\" 有時間戳\"},{\"text\":\"又沒有\"}]}",
+      "loops" : [
+
+      ],
+      "offsetMs" : 1000,
+      "rawRepeat" : 0,
+      "segs" : [
+        {
+          "fromMs" : 1000,
+          "text" : "沒有時間戳",
+          "toMs" : 1000,
+          "who" : "現場"
+        },
+        {
+          "fromMs" : 6000,
+          "text" : "有時間戳",
+          "toMs" : 7000,
+          "who" : "現場"
+        },
+        {
+          "fromMs" : 7000,
+          "text" : "又沒有",
+          "toMs" : 7000,
+          "who" : "現場"
+        }
+      ],
+      "who" : "現場"
+    },
+    {
+      "json" : "{\"transcription\":[{\"offsets\":{\"from\":0,\"to\":30000},\"text\":\"中文字幕志願者 李宗盛\",\"no_speech_prob\":0.0000001},{\"offsets\":{\"from\":30000,\"to\":31000},\"text\":\"  \"},{\"offsets\":{\"from\":31000,\"to\":33000},\"text\":\"我們開始吧!\"}]}",
+      "loops" : [
+
+      ],
+      "offsetMs" : 0,
+      "rawRepeat" : 0,
+      "segs" : [
+        {
+          "fromMs" : 31000,
+          "text" : "我們開始吧！",
+          "toMs" : 33000,
+          "who" : "我方"
+        }
+      ],
+      "who" : "我方"
+    },
+    {
+      "json" : "{\"transcription\":[]}",
+      "loops" : [
+
+      ],
+      "offsetMs" : 0,
+      "rawRepeat" : 0,
+      "segs" : [
+
+      ],
+      "who" : "我方"
+    },
+    {
+      "json" : "{\"transcription\":[{\"offsets\":{\"from\":0,\"to\":1000},\"text\":\"嗯\"},{\"offsets\":{\"from\":1000,\"to\":2000},\"text\":\"嗯\"},{\"offsets\":{\"from\":2000,\"to\":3000},\"text\":\"對\"},{\"offsets\":{\"from\":3000,\"to\":4000},\"text\":\"對\"}]}",
+      "loops" : [
+
+      ],
+      "offsetMs" : 5000,
+      "rawRepeat" : 0.5,
+      "segs" : [
+        {
+          "fromMs" : 5000,
+          "text" : "嗯",
+          "toMs" : 6000,
+          "who" : "遠端"
+        },
+        {
+          "fromMs" : 7000,
+          "text" : "對",
+          "toMs" : 8000,
+          "who" : "遠端"
+        }
+      ],
+      "who" : "遠端"
+    }
+  ],
+  "contract" : 1,
+  "name" : "whisper_json"
+}

@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Hearby.App — the Windows shell: tray icon, panel, floating status bar, records window, set-up wizard,
+       WASAPI recording (NAudio), transcription child process (Whisper.net: Vulkan GPU when available, else CPU),
+       AAC via Media Foundation, Chinese conversion via LCMapStringEx. Builds on macOS too (EnableWindowsTargeting). -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- Plain net10.0-windows: no Windows SDK projection (25 MB) is needed, the app calls Win32 directly.
+         Windows 10 22H2 (19045) or later is checked at run time (Doctor). -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>Hearby.App</RootNamespace>
+    <AssemblyName>Hearby</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\hearby.ico</ApplicationIcon>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <StartupObject>Hearby.App.Program</StartupObject>
+    <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+    <Using Include="System.IO" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="NAudio.Core" Version="3.1.0" />
+    <PackageReference Include="NAudio.Wasapi" Version="3.1.0" />
+    <PackageReference Include="Whisper.net" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime.NoAvx" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.9.1" />
+    <PackageReference Include="Velopack" Version="1.2.158" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Hearby.Core\Hearby.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\*.png" />
+    <Resource Include="Assets\*.jpg" />
+    <Resource Include="Assets\*.ico" />
+    <Content Include="..\..\..\LICENSE" Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\THIRD-PARTY-WINDOWS.md" Link="THIRD-PARTY.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\AGENTS-WINDOWS.md" Link="AGENTS.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <!-- The speech engine packages carry native files for every platform; this app ships the three Windows x64 variants only
+       (runtimes/win-x64 = CPU with AVX2, runtimes/noavx/win-x64, runtimes/vulkan/win-x64 = GPU). -->
+  <Target Name="HearbyKeepWinX64EngineOnly" BeforeTargets="AssignTargetPaths">
+    <ItemGroup>
+      <_HearbyDropRuntime Include="@(None)" Condition="$([System.String]::Copy('%(None.TargetPath)').Replace('\','/').StartsWith('runtimes/')) and !$([System.String]::Copy('%(None.TargetPath)').Replace('\','/').Contains('/win-x64/'))" />
+      <None Remove="@(_HearbyDropRuntime)" />
+    </ItemGroup>
+  </Target>
+</Project>

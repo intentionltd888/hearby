@@ -1,0 +1,27 @@
+<Project>
+  <!-- Hearby for Windows: shared build settings.
+       Deterministic + PathMap: binaries do not carry the build machine's paths (same rule as scripts/check-binary.sh on macOS). -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <PathMap>$(MSBuildThisFileDirectory)=./</PathMap>
+    <DebugType>embedded</DebugType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <Version>1.0.0</Version>
+    <FileVersion>1.0.0.1</FileVersion>
+    <InformationalVersion>1.0.0 (build 1)</InformationalVersion>
+    <Product>Hearby</Product>
+    <Company>Hearby</Company>
+    <Copyright>MIT License</Copyright>
+    <SatelliteResourceLanguages>zh-Hant</SatelliteResourceLanguages>
+      <!-- No source-control details inside the binaries (commit ids, repository URL): the release is built from what is public -->
+    <EnableSourceLink>false</EnableSourceLink>
+    <EnableSourceControlManagerQueries>false</EnableSourceControlManagerQueries>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+</Project>

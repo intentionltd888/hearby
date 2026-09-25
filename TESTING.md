@@ -1,5 +1,7 @@
 # TESTING.md — 驗收條目（每條可在乾淨的 macOS 使用者帳號重現）
 
+Windows 版的驗收條目見 [windows/TESTING-WINDOWS.md](windows/TESTING-WINDOWS.md)。<!-- windows -->
+
 狀態：✅＝已驗；◐＝程式面已驗、實機點按待驗；⏳＝還沒做到；—＝還沒驗。
 
 | # | 條 | 狀態 |

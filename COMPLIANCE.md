@@ -5,4 +5,6 @@
 3. **登入必須走官方自己的流程**：app 只呼叫官方 CLI 的登入指令並開系統瀏覽器；**永遠不在 app 裡做登入畫面收帳密或 session token**。
 4. **宣傳只能用純文字提**：可以寫「接上你自己的 Claude Code 或 ChatGPT」；不可把 Claude／Anthropic／OpenAI 的名字或標誌放進產品名、功能名、圖示或任何暗示背書的地方。功能叫「用我的訂閱」。
 
+Windows 版：Claude Code 用 Anthropic 官方的安裝指令與官方 `claude auth login`（瀏覽器登入、代碼貼回 CLI 自己的提示），app 不經手任何憑證；ChatGPT（Codex）在 Windows 版不提供，因為還沒有等同 macOS 外層沙箱的隔離。<!-- windows -->
+
 用量誠實：兩小時會議會吃掉訂閱額度；README 與精靈第 3 頁要事先講一場大概吃多少。

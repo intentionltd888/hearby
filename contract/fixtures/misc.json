@@ -1,0 +1,465 @@
+{
+  "cases" : [
+    {
+      "expected" : "00:00",
+      "fn" : "ts",
+      "ms" : 0
+    },
+    {
+      "expected" : "00:00",
+      "fn" : "ts",
+      "ms" : 999
+    },
+    {
+      "expected" : "00:01",
+      "fn" : "ts",
+      "ms" : 1000
+    },
+    {
+      "expected" : "00:59",
+      "fn" : "ts",
+      "ms" : 59999
+    },
+    {
+      "expected" : "01:00",
+      "fn" : "ts",
+      "ms" : 60000
+    },
+    {
+      "expected" : "59:59",
+      "fn" : "ts",
+      "ms" : 3599000
+    },
+    {
+      "expected" : "1:00:00",
+      "fn" : "ts",
+      "ms" : 3600000
+    },
+    {
+      "expected" : "1:01:01",
+      "fn" : "ts",
+      "ms" : 3661000
+    },
+    {
+      "expected" : "10:00:00",
+      "fn" : "ts",
+      "ms" : 36000000
+    },
+    {
+      "clamped" : 0,
+      "expected" : "0秒",
+      "fn" : "dur",
+      "seconds" : 0
+    },
+    {
+      "clamped" : 5,
+      "expected" : "5秒",
+      "fn" : "dur",
+      "seconds" : 5
+    },
+    {
+      "clamped" : 59.899999999999999,
+      "expected" : "59秒",
+      "fn" : "dur",
+      "seconds" : 59.899999999999999
+    },
+    {
+      "clamped" : 60,
+      "expected" : "1分0秒",
+      "fn" : "dur",
+      "seconds" : 60
+    },
+    {
+      "clamped" : 61,
+      "expected" : "1分1秒",
+      "fn" : "dur",
+      "seconds" : 61
+    },
+    {
+      "clamped" : 3599,
+      "expected" : "59分59秒",
+      "fn" : "dur",
+      "seconds" : 3599
+    },
+    {
+      "clamped" : 3600,
+      "expected" : "1小時0分",
+      "fn" : "dur",
+      "seconds" : 3600
+    },
+    {
+      "clamped" : 3725,
+      "expected" : "1小時2分",
+      "fn" : "dur",
+      "seconds" : 3725
+    },
+    {
+      "clamped" : 0,
+      "expected" : "0秒",
+      "fn" : "dur",
+      "seconds" : -1
+    },
+    {
+      "clamped" : 864000,
+      "expected" : "240小時0分",
+      "fn" : "dur",
+      "seconds" : 1.0000000000000001e+300
+    },
+    {
+      "date" : "2026-09-20 14:30",
+      "fn" : "splitFolder",
+      "input" : "2026-09-20_1430_週會",
+      "title" : "週會"
+    },
+    {
+      "date" : "2026-09-20 14:30",
+      "fn" : "splitFolder",
+      "input" : "2026-09-20_1430",
+      "title" : ""
+    },
+    {
+      "date" : "2026-09-20 14:30",
+      "fn" : "splitFolder",
+      "input" : "2026-09-20_1430_",
+      "title" : ""
+    },
+    {
+      "date" : "",
+      "fn" : "splitFolder",
+      "input" : "隨便的夾",
+      "title" : "隨便的夾"
+    },
+    {
+      "date" : "",
+      "fn" : "splitFolder",
+      "input" : "2026-09-20-1430_x",
+      "title" : "2026-09-20-1430_x"
+    },
+    {
+      "date" : "2026-09-20 14:30",
+      "fn" : "splitFolder",
+      "input" : "2026-09-20_1430_標題_有底線",
+      "title" : "標題_有底線"
+    },
+    {
+      "expected" : "週會",
+      "fn" : "safeTitle",
+      "input" : "週會"
+    },
+    {
+      "expected" : "未命名",
+      "fn" : "safeTitle",
+      "input" : ""
+    },
+    {
+      "expected" : "未命名",
+      "fn" : "safeTitle",
+      "input" : "   "
+    },
+    {
+      "expected" : "a b c d",
+      "fn" : "safeTitle",
+      "input" : "a/b:c\\d"
+    },
+    {
+      "expected" : "換行 標題",
+      "fn" : "safeTitle",
+      "input" : "換行\n標題"
+    },
+    {
+      "expected" : "表情😀標題",
+      "fn" : "safeTitle",
+      "input" : "表情😀標題"
+    },
+    {
+      "expected" : "長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長",
+      "fn" : "safeTitle",
+      "input" : "長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長長"
+    },
+    {
+      "expected" : "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂",
+      "fn" : "safeTitle",
+      "input" : "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂"
+    },
+    {
+      "expected" : "結尾空白",
+      "fn" : "safeTitle",
+      "input" : "結尾空白 "
+    },
+    {
+      "expected" : "控制字元",
+      "fn" : "safeTitle",
+      "input" : "\u0007控制字元"
+    },
+    {
+      "expected" : null,
+      "fn" : "urlProblem",
+      "input" : "http://127.0.0.1:11434",
+      "root" : "http://127.0.0.1:11434"
+    },
+    {
+      "expected" : null,
+      "fn" : "urlProblem",
+      "input" : "http://localhost:1234/v1/",
+      "root" : "http://localhost:1234"
+    },
+    {
+      "expected" : null,
+      "fn" : "urlProblem",
+      "input" : "https://my.server.com",
+      "root" : "https://my.server.com"
+    },
+    {
+      "expected" : "不加密的 http 只能接這台電腦（127.0.0.1）或 Tailscale 內網；其他位址請用 https",
+      "fn" : "urlProblem",
+      "input" : "http://192.168.1.5:11434",
+      "root" : "http://192.168.1.5:11434"
+    },
+    {
+      "expected" : null,
+      "fn" : "urlProblem",
+      "input" : "http://100.100.1.1:11434",
+      "root" : "http://100.100.1.1:11434"
+    },
+    {
+      "expected" : null,
+      "fn" : "urlProblem",
+      "input" : "http://box.tail1234.ts.net",
+      "root" : "http://box.tail1234.ts.net"
+    },
+    {
+      "expected" : "只接 http 或 https 開頭的位址",
+      "fn" : "urlProblem",
+      "input" : "ftp://x.com",
+      "root" : "ftp://x.com"
+    },
+    {
+      "expected" : "位址看不懂（例：http://127.0.0.1:11434）",
+      "fn" : "urlProblem",
+      "input" : "not a url",
+      "root" : "not a url"
+    },
+    {
+      "expected" : null,
+      "fn" : "urlProblem",
+      "input" : "http://[::1]:11434",
+      "root" : "http://[::1]:11434"
+    },
+    {
+      "expected" : "位址看不懂（例：http://127.0.0.1:11434）",
+      "fn" : "urlProblem",
+      "input" : "",
+      "root" : ""
+    },
+    {
+      "cap" : 32768,
+      "expected" : 16384,
+      "fn" : "contextFor",
+      "maxOutput" : 6000,
+      "system" : 1000,
+      "user" : 5000
+    },
+    {
+      "cap" : 32768,
+      "expected" : null,
+      "fn" : "contextFor",
+      "maxOutput" : 6000,
+      "system" : 2000,
+      "user" : 30000
+    },
+    {
+      "cap" : 16384,
+      "expected" : 8192,
+      "fn" : "contextFor",
+      "maxOutput" : 6000,
+      "system" : 500,
+      "user" : 100
+    },
+    {
+      "cap" : 65536,
+      "expected" : null,
+      "fn" : "contextFor",
+      "maxOutput" : 6000,
+      "system" : 1000,
+      "user" : 60000
+    },
+    {
+      "expected" : 16384,
+      "fn" : "maxContextTokens",
+      "gb" : 8
+    },
+    {
+      "expected" : 32768,
+      "fn" : "maxContextTokens",
+      "gb" : 15
+    },
+    {
+      "expected" : 32768,
+      "fn" : "maxContextTokens",
+      "gb" : 16
+    },
+    {
+      "expected" : 65536,
+      "fn" : "maxContextTokens",
+      "gb" : 31
+    },
+    {
+      "expected" : 65536,
+      "fn" : "maxContextTokens",
+      "gb" : 32
+    },
+    {
+      "expected" : 65536,
+      "fn" : "maxContextTokens",
+      "gb" : 64
+    },
+    {
+      "expected" : "## AI 會議摘要\n內容",
+      "fn" : "stripThinking",
+      "input" : "<think>想一想</think>\n## AI 會議摘要\n內容"
+    },
+    {
+      "expected" : "沒有思考",
+      "fn" : "stripThinking",
+      "input" : "沒有思考"
+    },
+    {
+      "expected" : "bd",
+      "fn" : "stripThinking",
+      "input" : "<think>a</think>b<think>c</think>d"
+    },
+    {
+      "expected" : "Claude 整理逾時（900 秒沒有回來）——可以按「重新整理全篇」再跑一次",
+      "fn" : "cliExplain",
+      "status" : 0,
+      "stderr" : "",
+      "stdout" : "",
+      "tail" : "",
+      "timedOut" : true
+    },
+    {
+      "expected" : "Claude 的指令列工具起不來：spawn failed: no such file",
+      "fn" : "cliExplain",
+      "status" : -1,
+      "stderr" : "spawn failed: no such file",
+      "stdout" : "",
+      "tail" : "spawn failed: no such file",
+      "timedOut" : false
+    },
+    {
+      "expected" : "找到了 Claude 的指令列工具，但它需要的 Node.js 找不到。到設定按一下那一列，讓 Hearby 裝一顆不需要 Node.js 的。",
+      "fn" : "cliExplain",
+      "status" : 127,
+      "stderr" : "env: node: No such file or directory",
+      "stdout" : "",
+      "tail" : "env: node: No such file or directory",
+      "timedOut" : false
+    },
+    {
+      "expected" : "Claude 的額度暫時用完了（它說：Error: You've hit your session limit · resets 3pm）。等它恢復後按「重新整理全篇」。",
+      "fn" : "cliExplain",
+      "status" : 1,
+      "stderr" : "Error: You've hit your session limit · resets 3pm",
+      "stdout" : "",
+      "tail" : "Error: You've hit your session limit · resets 3pm",
+      "timedOut" : false
+    },
+    {
+      "expected" : "這場太長，超過 Claude 一次能讀的量。目前先保留逐字稿版本。",
+      "fn" : "cliExplain",
+      "status" : 1,
+      "stderr" : "",
+      "stdout" : "Prompt is too long",
+      "tail" : "Prompt is too long",
+      "timedOut" : false
+    },
+    {
+      "expected" : "Claude 那邊現在很忙（API Error: 529 overloaded），晚點再按「重新整理全篇」。",
+      "fn" : "cliExplain",
+      "status" : 1,
+      "stderr" : "API Error: 529 overloaded",
+      "stdout" : "",
+      "tail" : "API Error: 529 overloaded",
+      "timedOut" : false
+    },
+    {
+      "expected" : null,
+      "fn" : "cliExplain",
+      "status" : 2,
+      "stderr" : "line one\nline two\nline three",
+      "stdout" : "",
+      "tail" : "line two line three",
+      "timedOut" : false
+    },
+    {
+      "expected" : null,
+      "fn" : "cliExplain",
+      "status" : 1,
+      "stderr" : "",
+      "stdout" : "stdout only\nsecond",
+      "tail" : "stdout only second",
+      "timedOut" : false
+    },
+    {
+      "a" : "今天討論預算",
+      "b" : "今天我們討論預算與時程",
+      "bigramsA" : [
+        "今天",
+        "天討",
+        "討論",
+        "論預",
+        "預算"
+      ],
+      "containment" : 0.80000000000000004,
+      "fn" : "bigram"
+    },
+    {
+      "a" : "好",
+      "b" : "好的",
+      "bigramsA" : [
+        "好"
+      ],
+      "containment" : 0,
+      "fn" : "bigram"
+    },
+    {
+      "a" : "",
+      "b" : "x",
+      "bigramsA" : [
+
+      ],
+      "containment" : 0,
+      "fn" : "bigram"
+    },
+    {
+      "a" : "Hello World",
+      "b" : "hello world",
+      "bigramsA" : [
+        "He",
+        "Wo",
+        "el",
+        "ld",
+        "ll",
+        "lo",
+        "oW",
+        "or",
+        "rl"
+      ],
+      "containment" : 0.66666666666666663,
+      "fn" : "bigram"
+    },
+    {
+      "a" : "A1B2",
+      "b" : "A1B2C3",
+      "bigramsA" : [
+        "1B",
+        "A1",
+        "B2"
+      ],
+      "containment" : 1,
+      "fn" : "bigram"
+    }
+  ],
+  "contract" : 1,
+  "name" : "misc"
+}

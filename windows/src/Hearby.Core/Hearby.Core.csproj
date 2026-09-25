@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Hearby.Core — the engine: transcript cleanup, hallucination filter, polish prompts and guards, record format,
+       memory, config, model download, pipeline. No Windows APIs here (platform pieces come in through Platform.*),
+       so it builds and its contract tests run on any OS. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Hearby.Core</RootNamespace>
+    <AssemblyName>Hearby.Core</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hearby.Core.Tests" />
+  </ItemGroup>
+</Project>

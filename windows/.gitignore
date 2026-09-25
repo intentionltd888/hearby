@@ -1,0 +1,5 @@
+# .NET build output (the installer is built into ../build/windows by build.sh)
+bin/
+obj/
+*.user
+.vs/

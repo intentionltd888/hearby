@@ -1,0 +1,86 @@
+{
+  "cases" : [
+    {
+      "expected" : "今天要討論產品更新，對",
+      "input" : "今天要討論產品更新,對"
+    },
+    {
+      "expected" : "好，我們開始！",
+      "input" : "好,我們開始!"
+    },
+    {
+      "expected" : "你確定嗎？確定。",
+      "input" : "你確定嗎?確定."
+    },
+    {
+      "expected" : "價格是3.5元。下次再說。",
+      "input" : "價格是3.5元.下次再說."
+    },
+    {
+      "expected" : "時間：明天；地點：會議室",
+      "input" : "時間:明天;地點:會議室"
+    },
+    {
+      "expected" : "Hello, world. OK?",
+      "input" : "Hello, world. OK?"
+    },
+    {
+      "expected" : "我們用 Claude, 還有 ChatGPT.",
+      "input" : "我們用 Claude, 還有 ChatGPT."
+    },
+    {
+      "expected" : "這個。那個",
+      "input" : "這個.那個"
+    },
+    {
+      "expected" : "好。",
+      "input" : "好."
+    },
+    {
+      "expected" : "結尾是句點。",
+      "input" : "結尾是句點."
+    },
+    {
+      "expected" : "A,B,C",
+      "input" : "A,B,C"
+    },
+    {
+      "expected" : "中文，English,中文",
+      "input" : "中文,English,中文"
+    },
+    {
+      "expected" : "數字1,000,中文",
+      "input" : "數字1,000,中文"
+    },
+    {
+      "expected" : "我說：「好」",
+      "input" : "我說:「好」"
+    },
+    {
+      "expected" : "…...",
+      "input" : "…..."
+    },
+    {
+      "expected" : "",
+      "input" : ""
+    },
+    {
+      "expected" : "講完了。 下一個",
+      "input" : "講完了. 下一個"
+    },
+    {
+      "expected" : "Q3 營收成長 12.5%,毛利率下降",
+      "input" : "Q3 營收成長 12.5%,毛利率下降"
+    },
+    {
+      "expected" : "表情😀,好",
+      "input" : "表情😀,好"
+    },
+    {
+      "expected" : "一，二，三。四",
+      "input" : "一,二,三.四"
+    }
+  ],
+  "contract" : 1,
+  "name" : "clean_punct"
+}
