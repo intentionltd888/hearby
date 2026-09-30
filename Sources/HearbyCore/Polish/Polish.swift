@@ -50,6 +50,14 @@ public enum Polish {
         public var history: [String] = []
         /// 情境（決定 prompt 與組稿）
         public var scene: RecordScene = .meeting
+        /// 中途暫停的說明（PauseSpan.note）；nil＝沒暫停過
+        public var pauseNote: String? = nil
+        /// 名冊與記憶（PolishContext.load）；nil＝沒有名冊，整理跟以前一樣
+        public var context: PolishContext? = nil
+        /// 認聲音（Voices.recognize，只有 macOS）：逐字稿第幾行是誰（名字或「聲音A」）；空＝沒認，整理跟以前一樣
+        public var voiceTags: [Int: String] = [:]
+        /// 紀錄表頭的「> 聲紋：…」
+        public var voiceLine: String? = nil
         public var isNote: Bool { scene == .note }
         public init(transcript: String, title: String, attendees: String, dateStr: String, durStr: String, warnings: [String], audioLine: String) {
             self.transcript = transcript; self.title = title; self.attendees = attendees; self.dateStr = dateStr; self.durStr = durStr; self.warnings = warnings; self.audioLine = audioLine
@@ -77,40 +85,58 @@ public enum Polish {
             briefRules = "\n\n會前重點（使用者開會前寫下這場要處理的事）：\n\(list)\n會前重點規則：\n- 整理「## 重點」時，與會前重點相關的討論優先保留具體細節與數字。\n- 會前重點不是事實來源——它只是使用者的待辦清單，嚴禁把其中字句當成會中講過的話；逐字稿沒出現的內容一律不寫。\n- 會前重點與與會者判斷無關——不要因為重點提到某人就把他列為與會者。"
             briefLedger = "\n\n另外在「## 待辦」之後加最後一節「## 會前重點對照」，恰好 \(briefItems.count) 行、每行對應會前重點清單的一條、順序照清單：行首「- 」接該條原文（逐字照抄清單，一個字不改），接「 → 」，接下落。下落三選一：會中有結論→一到兩句具體結論（含數字）；有討論但沒結論→「討論中」＋一句現況；逐字稿完全沒提到→只寫「本場未討論」。嚴禁編造，禁止出現清單以外的行。"
         }
-        let llmTranscript = Transcriber.mergedForLLM(i.transcript)
+        // 認聲音：交給 AI 的那份，who 後面加「·名字」或「·聲音A」（存下來的逐字稿不動）
+        let voiceTags = i.scene == .note ? [:] : i.voiceTags   // 筆記只有自己，不標
+        let llmTranscript = Transcriber.mergedForLLM(Voices.inject(i.transcript, tags: voiceTags))
+        // 名冊只給會議、只給雲端整理：本機小模型上下文小、多的規矩跟不上；訪談與筆記沒有決議、待辦可對
+        let memory = i.scene == .meeting && provider?.id != "endpoint" ? i.context : nil
+        let pauseRule = i.pauseNote.map { "\n暫停：\($0)。逐字稿裡「（⏸ …）」那一行只是暫停的位置，不是任何人說的話；暫停那段沒有錄音，不要推測那段談了什麼。" } ?? ""
         let metaBlock = """
             會議日期：\(i.dateStr)
             使用者提供的標題：\(i.title.isEmpty ? "（未提供）" : i.title)
             使用者提供的與會者名單（人名以此為權威寫法）：\(i.attendees.isEmpty ? "（未提供，請自行判斷）" : i.attendees)
-            時長：\(i.durStr)
+            時長：\(i.durStr)\(pauseRule)
             \(i.warnings.isEmpty ? "" : "備註：" + i.warnings.joined(separator: "；"))\(extras)\(correctionSection)
             """
-        let userMsg = metaBlock + baselineSection + "\n\n逐字稿：\n" + llmTranscript
+        // 讀音比對：逐字稿裡唸起來像名冊名字的片段，當候選交給 AI（見 SoundAlike）
+        let sounds = memory.map { m -> [SoundAlike.Hit] in
+            let t = SoundAlike.targets(roster: m.roster)
+            return SoundAlike.scan(llmTranscript, targets: t.targets, heard: t.heard)
+        } ?? []
+        let userMsg = metaBlock + baselineSection + (memory.map { Prompt.memoryBlock($0, sounds: sounds) } ?? "") + "\n\n逐字稿：\n" + llmTranscript
 
         var notes: String?
         var polishErr: String?
+        var fixes: [NameFixes.Fix] = []
         if let p = provider, p.id != "none" {
             let sys: String
             switch i.scene {
             case .note: sys = Prompt.note()
-            case .interview: sys = Prompt.interview()
-            case .meeting: sys = Prompt.system(scenario: i.scenario, onsiteCount: i.onsiteCount, onsite: i.onsite) + briefRules + briefLedger
+            case .interview: sys = Prompt.interview() + (voiceTags.isEmpty ? "" : Voices.promptRule)
+            case .meeting: sys = Prompt.system(scenario: i.scenario, onsiteCount: i.onsiteCount, onsite: i.onsite) + briefRules + briefLedger + (memory == nil ? "" : Prompt.memoryRules)
+                + (voiceTags.isEmpty ? "" : Voices.promptRule)
             }
-            let (raw, err) = p.complete(system: sys, user: userMsg)
+            // 本機小模型：同樣的規矩在最後再說一次、說得更直白（見 Prompt.localModelRules）
+            let (raw, err) = p.complete(system: p.id == "endpoint" ? sys + Prompt.localModelRules : sys, user: userMsg)
             // 沒有任何 `## ` 節的輸出（只回一句開場白之類）不算數：當成失敗，既有紀錄不會被它蓋掉
             let out0 = raw.flatMap { PolishGuards.sanitizeModelOutput($0) }
             let shapeErr: String? = (raw?.isEmpty == false && out0 == nil) ? "AI 回的內容不是一份紀錄（沒有任何小節），這次沒有採用——可以按「重新整理全篇」再跑一次" : nil
             if var out = out0, !out.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if memory != nil { (out, fixes) = NameFixes.extract(out) }
+                if !voiceTags.isEmpty { out = Voices.scrub(out) }
                 if i.scene == .meeting { out = PolishGuards.filterAttendees(notesMD: out, attendeeList: i.attendees) }
                 out = PolishGuards.sanitizeTodoOwners(notesMD: out, attendeeList: i.attendees)
+                if p.id == "endpoint" { out = PolishGuards.clearPlaceholderOwners(notesMD: out) }
                 out = PolishGuards.sanitizeTodoDues(notesMD: out, sourceText: llmTranscript + (i.corrections ?? ""))
+                if let m = memory { out = NameFixes.dropRepeatedTodos(out, open: m.openTodos) }
                 out = PolishGuards.stripExampleTodos(notesMD: out)
                 out = PolishGuards.stripExampleNames(notesMD: out)
                 out = PolishGuards.normalizeEmptyMarkers(notesMD: out)
                 out = PolishGuards.tidyTodoRendering(notesMD: out)
                 let (verified, ghosts) = PolishGuards.verifyCitations(notesMD: out, transcript: llmTranscript)
                 if ghosts > 0 { HearbyLog.write("polish: \(ghosts) ghost citations removed") }
-                notes = verified
+                // 「之前的事」：沒有時間戳的那一行不留（逐字稿沒講過），空了整節拿掉
+                notes = memory == nil ? verified : FollowUps.prune(verified)
             } else {
                 polishErr = err ?? shapeErr ?? "模型回了空白內容（可按「重新整理全篇」再跑）"
             }
@@ -118,6 +144,18 @@ public enum Polish {
         let sharedMic = i.scenario == .onsite || i.scenario == .phoneSpeaker || (i.scenario == nil && i.onsite)
         if sharedMic, let n = notes { notes = PolishGuards.insertOnsiteNote(notesMD: n, scenario: i.scenario, onsiteCount: i.onsiteCount) }
         if !briefItems.isEmpty, let n = notes { notes = normalizeBriefLedger(notesMD: n, brief: briefItems) }
+        // 名字更正：照清單改逐字稿那幾行；沒改的在紀錄標 [[?]]；表頭記一行改了什麼
+        var transcript = i.transcript
+        var fixLine: String? = nil
+        if let m = memory, let n = notes, !fixes.isEmpty {
+            let attendeeNames = i.attendees.components(separatedBy: CharacterSet(charactersIn: "、,，")).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            let r = NameFixes.apply(fixes, transcript: i.transcript, names: m.names + attendeeNames)
+            transcript = r.transcript
+            let done = Set(r.applied.map { $0.fix.name })
+            let unsure = r.skipped.filter { !done.contains($0.name) }
+            notes = NameFixes.markUnsure(n, unsure, transcript: i.transcript)
+            fixLine = NameFixes.headerLine(applied: r.applied, unsure: unsure)
+        }
 
         // 組稿（格式一字不改）
         var md = "# \(i.scene.mdTitle) \(i.dateStr)\n\n"
@@ -130,7 +168,14 @@ public enum Polish {
         if let sc = i.scenario, i.scene == .meeting {
             md += "> 本場情境：\(sc.displayName)（依聲音訊號自動判定）" + (i.onsiteCount.map { "｜現場人數 \($0 >= 5 ? "5+" : String($0))" } ?? "") + "\n"
         }
+        if let p = i.pauseNote { md += "> ⏸ \(p)\n" }
+        // 本機小模型整理的：講清楚是誰整理的、哪裡要自己再看（盲測：多人會議會把提議寫成決議、自己分配負責人）
+        if notes != nil, provider?.id == "endpoint" {
+            md += "> 本機模型整理（\(LocalEndpoint.model ?? "本機模型")）：比雲端整理簡略，決議與待辦請對照逐字稿再看一次\n"
+        }
         if !briefItems.isEmpty { md += "> 會前重點：\(briefItems.count) 條（下落見文末「會前重點對照」）\n" }
+        if let f = fixLine { md += f + "\n" }
+        if let v = i.voiceLine, i.scene != .note { md += v + "\n" }
         for w in i.warnings { md += "> ⚠ \(w)\n" }
         md += "\n"
         if let notes {
@@ -144,7 +189,7 @@ public enum Polish {
             md += "\n## 會前重點對照\n" + briefItems.map { "- \($0) → （AI 整理未執行，重整理時會對照）" }.joined(separator: "\n") + "\n"
         }
         if !i.links.isEmpty { md += "\n## 參考連結\n" + i.links.map { "- \($0)" }.joined(separator: "\n") + "\n" }
-        md += "\n---\n\n## 逐字稿\n" + i.transcript + "\n"
+        md += "\n---\n\n## 逐字稿\n" + transcript + "\n"
 
         var summary = "已存檔。"
         if let notes, let range = notes.range(of: "## " + summaryHeading(i.scene)) {

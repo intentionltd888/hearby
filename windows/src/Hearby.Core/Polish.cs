@@ -65,6 +65,8 @@ public static class Polish
         public RecordScene Scene = RecordScene.Meeting;
         /// Mid-pause note (PauseSpan.Note); null = no pause
         public string? PauseNote;
+        /// Roster and memory (PolishContext.Load); null = no roster, polish exactly as before
+        public PolishContext? Context;
         public bool IsNote => Scene == RecordScene.Note;
 
         public Input(string transcript, string title, string attendees, string dateStr, string durStr, List<string> warnings, string audioLine)
@@ -96,6 +98,8 @@ public static class Polish
             briefLedger = $"\n\n另外在「## 待辦」之後加最後一節「## 會前重點對照」，恰好 {briefItems.Count} 行、每行對應會前重點清單的一條、順序照清單：行首「- 」接該條原文（逐字照抄清單，一個字不改），接「 → 」，接下落。下落三選一：會中有結論→一到兩句具體結論（含數字）；有討論但沒結論→「討論中」＋一句現況；逐字稿完全沒提到→只寫「本場未討論」。嚴禁編造，禁止出現清單以外的行。";
         }
         var llmTranscript = Transcriber.MergedForLLM(i.Transcript);
+        // the roster is for meetings polished in the cloud only: small local models have little context and cannot follow the extra rules
+        var memory = i.Scene == RecordScene.Meeting && provider?.Id != "endpoint" ? i.Context : null;
         var pauseRule = i.PauseNote is { } pn ? $"\n暫停：{pn}。逐字稿裡「（⏸ …）」那一行只是暫停的位置，不是任何人說的話；暫停那段沒有錄音，不要推測那段談了什麼。" : "";
         var metaBlock =
             $"會議日期：{i.DateStr}\n" +
@@ -103,17 +107,25 @@ public static class Polish
             $"使用者提供的與會者名單（人名以此為權威寫法）：{(i.Attendees.Length == 0 ? "（未提供，請自行判斷）" : i.Attendees)}\n" +
             $"時長：{i.DurStr}{pauseRule}\n" +
             $"{(i.Warnings.Count == 0 ? "" : "備註：" + string.Join("；", i.Warnings))}{extras}{correctionSection}";
-        var userMsg = metaBlock + baselineSection + "\n\n逐字稿：\n" + llmTranscript;
+        // Sound-alike matching: stretches of the transcript that sound like a roster name go to the AI as candidates (see SoundAlike)
+        var sounds = new List<SoundAlike.Hit>();
+        if (memory != null)
+        {
+            var (targets, heard) = SoundAlike.Targets(memory.Roster);
+            sounds = SoundAlike.Scan(llmTranscript, targets, heard);
+        }
+        var userMsg = metaBlock + baselineSection + (memory != null ? Prompt.MemoryBlock(memory, sounds) : "") + "\n\n逐字稿：\n" + llmTranscript;
 
         string? notes = null;
         string? polishErr = null;
+        var fixes = new List<NameFixes.Fix>();
         if (provider is { } p && p.Id != "none")
         {
             var sys = i.Scene switch
             {
                 RecordScene.Note => Prompt.Note(),
                 RecordScene.Interview => Prompt.Interview(),
-                _ => Prompt.System(i.Scenario, i.OnsiteCount, i.Onsite) + briefRules + briefLedger,
+                _ => Prompt.System(i.Scenario, i.OnsiteCount, i.Onsite) + briefRules + briefLedger + (memory == null ? "" : Prompt.MemoryRules),
             };
             var (raw, err) = p.Complete(p.Id == "endpoint" ? sys + Prompt.LocalModelRules : sys, userMsg);
             // output without any `## ` section (just an opener) does not count: a failure, the existing record is not replaced
@@ -122,23 +134,39 @@ public static class Polish
             if (out0 is { } o && Str.TrimWSNL(o).Length > 0)
             {
                 var outMd = o;
+                if (memory != null) (outMd, fixes) = NameFixes.Extract(outMd);
                 if (i.Scene == RecordScene.Meeting) outMd = PolishGuards.FilterAttendees(outMd, i.Attendees);
                 outMd = PolishGuards.SanitizeTodoOwners(outMd, i.Attendees);
                 if (p.Id == "endpoint") outMd = PolishGuards.ClearPlaceholderOwners(outMd);
                 outMd = PolishGuards.SanitizeTodoDues(outMd, llmTranscript + (i.Corrections ?? ""));
+                if (memory != null) outMd = NameFixes.DropRepeatedTodos(outMd, memory.OpenTodos);
                 outMd = PolishGuards.StripExampleTodos(outMd);
                 outMd = PolishGuards.StripExampleNames(outMd);
                 outMd = PolishGuards.NormalizeEmptyMarkers(outMd);
                 outMd = PolishGuards.TidyTodoRendering(outMd);
                 var (verified, ghosts) = PolishGuards.VerifyCitations(outMd, llmTranscript);
                 if (ghosts > 0) HearbyLog.Write($"polish: {ghosts} ghost citations removed");
-                notes = verified;
+                // 「之前的事」: a line without a timestamp is not kept (the transcript never said it); empty = section removed
+                notes = memory == null ? verified : FollowUps.Prune(verified);
             }
             else polishErr = err ?? shapeErr ?? "模型回了空白內容（可按「重新整理全篇」再跑）";
         }
         bool sharedMic = i.Scenario is MeetingScenario.Onsite or MeetingScenario.PhoneSpeaker || (i.Scenario == null && i.Onsite);
         if (sharedMic && notes is { } n1) notes = PolishGuards.InsertOnsiteNote(n1, i.Scenario, i.OnsiteCount);
         if (briefItems.Count > 0 && notes is { } n2) notes = NormalizeBriefLedger(n2, briefItems);
+        // name fixes: fix those transcript lines; the ones not changed get [[?]] in the record; one header line says what changed
+        var transcript = i.Transcript;
+        string? fixLine = null;
+        if (memory != null && notes is { } n3 && fixes.Count > 0)
+        {
+            var attendeeNames = i.Attendees.Split(['、', ',', '，']).Select(Str.TrimWS).Where(x => x.Length > 0).ToList();
+            var fx = NameFixes.Apply(fixes, i.Transcript, memory.Names.Concat(attendeeNames).ToList());
+            transcript = fx.Transcript;
+            var done = new HashSet<string>(fx.Applied.Select(a => a.Fix.Name));
+            var unsure = fx.Skipped.Where(f => !done.Contains(f.Name)).ToList();
+            notes = NameFixes.MarkUnsure(n3, unsure, i.Transcript);
+            fixLine = NameFixes.HeaderLine(fx.Applied, unsure);
+        }
 
         // assemble (format unchanged)
         var md = new StringBuilder();
@@ -156,6 +184,7 @@ public static class Polish
         if (notes != null && provider?.Id == "endpoint")
             md.Append($"> 本機模型整理（{LocalEndpoint.Model ?? "本機模型"}）：比雲端整理簡略，決議與待辦請對照逐字稿再看一次\n");
         if (briefItems.Count > 0) md.Append($"> 會前重點：{briefItems.Count} 條（下落見文末「會前重點對照」）\n");
+        if (fixLine != null) md.Append(fixLine + "\n");
         foreach (var w in i.Warnings) md.Append($"> ⚠ {w}\n");
         md.Append('\n');
         if (notes != null) md.Append(Str.TrimWSNL(notes) + "\n");
@@ -164,7 +193,7 @@ public static class Polish
         if (notes == null && briefItems.Count > 0)
             md.Append("\n## 會前重點對照\n" + string.Join("\n", briefItems.Select(x => $"- {x} → （AI 整理未執行，重整理時會對照）")) + "\n");
         if (i.Links.Count > 0) md.Append("\n## 參考連結\n" + string.Join("\n", i.Links.Select(l => $"- {l}")) + "\n");
-        md.Append("\n---\n\n## 逐字稿\n" + i.Transcript + "\n");
+        md.Append("\n---\n\n## 逐字稿\n" + transcript + "\n");
 
         var summary = "已存檔。";
         if (notes != null && notes.Find("## " + SummaryHeading(i.Scene)) is var r && r >= 0)

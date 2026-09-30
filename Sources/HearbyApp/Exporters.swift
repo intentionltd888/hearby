@@ -59,7 +59,10 @@ enum Exporters {
         guard let md = try? String(contentsOf: mdURL, encoding: .utf8) else { done(.failure(HearbyError("讀不到 \(mdURL.lastPathComponent)"))); return }
         let base = mdURL.deletingPathExtension().lastPathComponent
         let dest = mdURL.deletingLastPathComponent().appendingPathComponent(base + ".pdf")
-        _ = PDFRenderer(html: Html.render(md: RecordMD.clientVersion(md: md), header: header), dest: dest, done: done)
+        // 排版要一兩秒、排完才寫檔：這段時間這一場不能改標題（改了資料夾名就寫不回去）
+        let dir = mdURL.deletingLastPathComponent()
+        MeetingBusy.begin(dir)
+        _ = PDFRenderer(html: Html.render(md: RecordMD.clientVersion(md: md), header: header), dest: dest) { r in MeetingBusy.end(dir); done(r) }
     }
 
     /// Word：純 Swift 產 .docx（Word／Pages 直接開；版型依情境）

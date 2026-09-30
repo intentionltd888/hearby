@@ -194,7 +194,11 @@ public struct WizardView: View {
             heading("紀錄要誰寫")
             Text("錄完會先有一份逐字稿。要變成有摘要、重點、待辦的紀錄，得有人整理。你有付費的 Claude 或 ChatGPT 帳號就交給它，用的是帳號本來就有的額度，不另外收費；沒有就先只要逐字稿，之後隨時可以改。")
                 .font(NeuFont.ui(NeuType.body)).foregroundColor(Neu.inkMid).fixedSize(horizontal: false, vertical: true)
-            ScrollView { ProvidersPane(selected: $provider, compact: true) }
+            ScrollView {
+                ProvidersPane(selected: $provider, compact: true, showEndpoint: false)
+                Text("有自己裝的本機模型（Ollama、LM Studio）？之後到「設定 → 紀錄要誰寫」接上就好。")
+                    .font(NeuFont.ui(NeuType.micro)).foregroundColor(Neu.inkSoft).frame(maxWidth: .infinity, alignment: .leading).padding(.top, NeuSpace.xs)
+            }
             nav()
         }
     }

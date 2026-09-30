@@ -31,10 +31,11 @@ public enum Providers {
         switch id {
         case "claude": return ClaudeCLI()
         case "codex": return CodexCLI()
+        case "endpoint": return LocalEndpoint()
         default: return NoneProvider()
         }
     }
-    public static let all: [Provider] = [ClaudeCLI(), CodexCLI(), NoneProvider()]
+    public static let all: [Provider] = [ClaudeCLI(), CodexCLI(), LocalEndpoint(), NoneProvider()]
 
     /// 自動挑：使用者選過就不動；否則已登入的 Claude → 已登入的 Codex → 只要逐字稿
     @discardableResult

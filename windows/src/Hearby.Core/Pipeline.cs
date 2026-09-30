@@ -137,6 +137,8 @@ public sealed class Pipeline
         }
         var meetingDir = Path.Combine(Paths.Meetings, name);
         Directory.CreateDirectory(meetingDir);
+        // once the transcript version is on disk the meeting is in the list; the final version is written at the end: no renaming meanwhile
+        using var busy = MeetingBusy.Scope(meetingDir);
         var mdPath = Path.Combine(meetingDir, name + ".md");
         var m4aDest = Path.Combine(meetingDir, name + ".m4a");
         MeetingMeta.Save(meta, dir);
@@ -162,9 +164,11 @@ public sealed class Pipeline
         Stage(provider.Id == "none" ? "整理逐字稿…" : meta.Scene == "note" ? "AI 整理成筆記…" : meta.Scene == "interview" ? "AI 整理成訪談稿…" : "AI 整理中…（判斷與會者、整理摘要與待辦）");
         input.Warnings = warnings;
         input.AudioLine = m4aOK ? m4aDest : dir;
+        input.Context = PolishContext.Load(name);   // only when memory has a roster (none = as before)
         var (md0, summary0, polishErr) = Polish.BuildNotes(input, provider);
-        var md = Clean.ToTraditional(md0);
-        var summary = Clean.ToTraditional(summary0);
+        var keep = input.Context?.Names ?? [];   // roster names are not converted (涂 is not 塗)
+        var md = Clean.ToTraditional(md0, keep);
+        var summary = Clean.ToTraditional(summary0, keep);
         meta.Provider = provider.Id;
         MeetingMeta.Save(meta, dir);
 
@@ -175,7 +179,7 @@ public sealed class Pipeline
         MeetingMeta.Save(meta, meetingDir);
         try { Mirror.Copy(mdPath); } catch { }
         EntryFiles.Ensure();
-        try { MemoryStore.AppendMeeting(mdPath); } catch (Exception e) { HearbyLog.Write($"memory append fail: {e.Message}"); }
+        try { MemoryStore.Sync(mdPath); } catch (Exception e) { HearbyLog.Write($"memory sync fail: {e.Message}"); }
         HearbyLog.Write($"pipeline done → {Path.GetFileName(mdPath)} err={polishErr ?? "-"}");
         return new Output(mdPath, meetingDir, summary, polishErr);
     }

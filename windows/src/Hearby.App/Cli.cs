@@ -5,6 +5,8 @@
 //   --import <file> [--title T] [--provider none|claude|endpoint]   transcribe and organise an audio or video file
 //   --process <work folder>      organise an existing recording work folder (mic.wav / system.wav)
 //   --repolish <md> "<corrections>"
+//   --memory-rebuild [<md>]      sync memory (MEETINGS / OPEN / PEOPLE / index.json) to what the record says now; no file = every meeting
+//   --rename <md or folder> "<new title>"   rename a meeting: folder, file names, record header, meta.json, memory ids, mirror together
 //   --export-word <md> [--company X --recorder Y --units Z]
 //   --record <seconds> [--source room|online] [--pause-at s --resume-at s] [--no-process] [--title T]   real recording (development)
 // Hearby.exe is a windowed program: typed into cmd or PowerShell, Windows does not wait for it. Its output goes to the
@@ -21,12 +23,12 @@ static partial class Cli
     [
         "--help", "-h", "--version", "--selftest", "--doctor", "--deep", "--download-model", "--import", "--process", "--repolish",
         "--provider", "--title", "--scene", "--export-word", "--export-pdf", "--company", "--recorder", "--units", "--record", "--source",
-        "--no-process", "--pause-at", "--resume-at", "--convert",
+        "--no-process", "--pause-at", "--resume-at", "--convert", "--memory-rebuild", "--rename",
     ];
     static readonly HashSet<string> TakesValue =
     [
         "--import", "--process", "--repolish", "--provider", "--title", "--scene", "--export-word", "--export-pdf", "--company", "--recorder",
-        "--units", "--record", "--source", "--pause-at", "--resume-at", "--convert",
+        "--units", "--record", "--source", "--pause-at", "--resume-at", "--convert", "--rename",
     ];
 
     static string Usage => $"""
@@ -37,6 +39,8 @@ static partial class Cli
           --import <檔> [--title 標題] [--provider none|claude|endpoint]   聽打並整理一個音檔或影片
           --process <工作夾>           對既有錄音工作夾跑整理
           --repolish <md> "<修正>"     重新整理全篇
+          --memory-rebuild [<md>]      記憶同步成紀錄現在的樣子（改過紀錄之後跑；不給檔＝每一場）
+          --rename <md 或資料夾> "<新標題>"   改一場的標題（資料夾、檔名、紀錄表頭、記憶、副本一起換；不要自己改資料夾名）
           --export-word <md> / --export-pdf <md> [--company X --recorder Y --units Z]
           --record <秒> [--source room|online] [--pause-at 秒 --resume-at 秒] [--no-process]
           --convert <檔>               只把音檔／影片轉成 16 kHz 的 wav（檢查某個檔讀不讀得了）
@@ -72,6 +76,10 @@ static partial class Cli
             if (skip > 0) { skip--; continue; }
             skip = TakesValue.Contains(x) ? 1 : 0;
             if (x == "--repolish" && a.Length > i + 2 && !Known.Contains(a[i + 2])) skip = 2;
+            // --memory-rebuild takes a file or nothing
+            if (x == "--memory-rebuild" && a.Length > i + 1 && !Known.Contains(a[i + 1])) skip = 1;
+            // --rename takes two values (the meeting, the new title); a title that looks like a flag ("--Q1") is still the title
+            if (x == "--rename" && a.Length > i + 2 && !Known.Contains(a[i + 2])) skip = 2;
             flags.Add(x);
         }
         if (flags.FirstOrDefault(f => f.StartsWith("--", StringComparison.Ordinal) && !Known.Contains(f)) is { } bad)
@@ -197,8 +205,79 @@ static partial class Cli
         }
         if (Value("--record") is { } secsText && double.TryParse(secsText, System.Globalization.CultureInfo.InvariantCulture, out var seconds))
             return Record(seconds, Value("--source"), Value("--pause-at"), Value("--resume-at"), set.Contains("--no-process"), Value("--title"), Provider);
+        if (set.Contains("--memory-rebuild")) return MemoryRebuild(Value("--memory-rebuild") is { } t && !Known.Contains(t) ? t : null);
+        if (Value("--rename") is { } target)
+        {
+            int i = Array.IndexOf(a, "--rename");
+            if (a.Length <= i + 2 || Known.Contains(a[i + 2])) { Console.Error.WriteLine($"--rename 後面要接兩個值：那一場的 md（或資料夾）、新標題\n\n{Usage}"); return 2; }
+            return Rename(target, a[i + 2]);
+        }
         Out(Usage);
         return 2;
+    }
+
+    /// --rename <md or folder> "<new title>": rename a meeting. Folder, files starting with the old name, record header, meta.json,
+    /// memory ids and mirror copies change together
+    static int Rename(string target, string title)
+    {
+        var dir = Path.GetFullPath(target);
+        if (File.Exists(dir)) dir = Path.GetDirectoryName(dir)!;
+        else if (!Directory.Exists(dir)) { Out($"✗ 找不到：{target}"); return 1; }
+        dir = Path.TrimEndingDirectorySeparator(dir);
+        if (!string.Equals(Path.GetDirectoryName(dir), Path.TrimEndingDirectorySeparator(Path.GetFullPath(Paths.Meetings)), StringComparison.OrdinalIgnoreCase))
+        {
+            Out($"✗ {dir} 不在 {Paths.Meetings} 底下：只改 Hearby 的會議");
+            return 1;
+        }
+        try
+        {
+            var r = MeetingRename.Rename(dir, title);
+            if (r.Unchanged) { Out("（標題一樣，沒有要改的）"); return 0; }
+            Out($"ok  會議/{r.NewId}/（原本：{r.OldId}）");
+            if (r.Renamed.Count > 0) Out($"  夾裡改名：{r.Renamed.Count} 個檔");
+            if (!ConfigStore.Shared.Current.MemoryEnabled) Out("  記憶是關的，沒有動");
+            else if (r.Memory.Count > 0) Out($"  記憶：{string.Join("、", r.Memory)}" + (r.Backups.Count == 0 ? "" : $"（改之前留了 {string.Join("、", r.Backups.Select(Path.GetFileName))}）"));
+            if (r.Mirror.Count > 0) Out($"  副本：{string.Join("、", r.Mirror.Select(Path.GetFileName))}");
+            foreach (var w in r.Warnings) Out($"⚠ {w}");
+            return r.Warnings.Count == 0 ? 0 : 1;
+        }
+        catch (Exception e) { Out($"✗ {e.Message}"); return 1; }
+    }
+
+    /// --memory-rebuild [<md>]: memory follows the record. Hearby's untouched lines become the new version, the user's stay; <name>.bak-<date> before an existing line changes
+    static int MemoryRebuild(string? target)
+    {
+        if (!ConfigStore.Shared.Current.MemoryEnabled) { Out("✗ 記憶是關的，這次沒有寫。到設定打開「記憶」再跑。"); return 1; }
+        List<string> paths;
+        if (target != null)
+        {
+            if (!File.Exists(target)) { Out($"✗ 找不到：{target}"); return 1; }
+            if (!MemoryStore.IsMainRecord(target)) { Out($"✗ {Path.GetFileName(target)} 不是一場的主紀錄（翻譯檔、_舊版 備份不進記憶）"); return 1; }
+            paths = [Path.GetFullPath(target)];
+        }
+        else
+        {
+            paths = MemoryStore.AllRecords();
+            if (paths.Count == 0) { Out($"（{Paths.Meetings} 裡還沒有紀錄）"); return 0; }
+        }
+        bool failed = false;
+        // one meeting, changed by another program: diff against what Hearby last wrote, changed names go into the name ledger (memory/NAMES.md)
+        if (target != null)
+        {
+            if (NameLedger.LearnFromEdit(paths[0]) is { } learned) foreach (var e in learned) Out($"記住名字：{e.Heard} → {e.Name}（{e.How}）");
+            else Out("（這份跟 Hearby 上次寫的不一樣，但找不到上次那一版的備份，改過的名字沒學到；下次改之前先留 .bak）");
+        }
+        foreach (var (p, rep, err) in MemoryStore.Sync(paths))
+        {
+            var id = Path.GetFileNameWithoutExtension(p);
+            if (err != null) { Out($"✗ {id}：{err}"); failed = true; continue; }
+            if (rep == null) { Out($"—  {id}：略過"); continue; }
+            var line = $"ok  {id}：" + (rep.Changed.Count == 0 ? "已經是最新" : rep.IsNew ? "第一次寫進記憶" : "更新 " + string.Join("、", rep.Changed));
+            if (rep.Kept > 0) line += $"；你改過或加的 {rep.Kept} 行照舊";
+            Out(line);
+            foreach (var b in rep.Backups) Out($"    備份：{Path.GetFileName(b)}");
+        }
+        return failed ? 1 : 0;
     }
 
     static int DownloadModel()

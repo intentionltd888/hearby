@@ -111,6 +111,16 @@ public sealed class AppState
     }
 
     public void Fail(string msg) { Panel.ErrorText = msg; Go(Phase.Error, msg); }
+
+    /// A meeting was renamed in the list: the done page still pointing at it follows, so "open this record" still finds it
+    public void Renamed(string oldDir, MeetingRename.Report r)
+    {
+        if (Panel.DoneMD is { } md && r.MdPath is { } n && string.Equals(Path.GetDirectoryName(md), oldDir, StringComparison.OrdinalIgnoreCase))
+        {
+            Panel.DoneMD = n;
+            Panel.DoneTitle = r.NewId;
+        }
+    }
     public void Dismiss() => Go(Phase.Idle, "dismiss");
 
     /// What the idle page shows

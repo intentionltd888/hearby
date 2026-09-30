@@ -1,0 +1,107 @@
+{
+  "cases" : [
+    {
+      "applied" : "Kevien 說 Herbie 很好，賀比 跟 Tokey 也是；別名1 不動",
+      "count" : 0,
+      "expected" : [
+
+      ],
+      "glossary" : "# 專有名詞與別名（正名 = 別名1, 別名2；下一場聽打後自動改正）\n",
+      "people" : "# 人（誰是誰、怎麼稱呼、出席過哪些會）\n\n<!-- 每人一節：## 名字 ／ - 別名：… ／ - 單位：… ／ - 出席：會議 id -->\n",
+      "text" : "Kevien 說 Herbie 很好，賀比 跟 Tokey 也是；別名1 不動"
+    },
+    {
+      "applied" : "Kevin 說 Hearby 很好，Hearby 跟 Talky 也是；別名1 不動",
+      "count" : 4,
+      "expected" : [
+        [
+          "Kevien",
+          "Kevin"
+        ],
+        [
+          "Kevyn",
+          "Kevin"
+        ],
+        [
+          "小明哥",
+          "王小明"
+        ],
+        [
+          "Ming",
+          "王小明"
+        ],
+        [
+          "Xiaoming",
+          "王小明"
+        ],
+        [
+          "Herbie",
+          "Hearby"
+        ],
+        [
+          "賀比",
+          "Hearby"
+        ],
+        [
+          "Tokey",
+          "Talky"
+        ],
+        [
+          "托基",
+          "Talky"
+        ]
+      ],
+      "glossary" : "# 詞\nHearby = Herbie, 賀比\n- Talky ＝ Tokey、托基\nFully = F\n = 沒有正名\n",
+      "people" : "# 人\n\n## Kevin\n- 別名：Kevien、Kevyn\n- 單位：產品部\n\n## 王小明\n- 別名: 小明哥, Ming\n- aliases: Xiaoming\n",
+      "text" : "Kevien 說 Herbie 很好，賀比 跟 Tokey 也是；別名1 不動"
+    },
+    {
+      "applied" : "Kevin 說 Hearby 很好，Hearby 跟 Talky 也是；別名1 不動",
+      "count" : 4,
+      "expected" : [
+        [
+          "Kevien",
+          "Kevin"
+        ],
+        [
+          "Herbie",
+          "Hearby"
+        ],
+        [
+          "賀比",
+          "Hearby"
+        ],
+        [
+          "Tokey",
+          "Talky"
+        ]
+      ],
+      "glossary" : "# 專有名詞與別名（正名 = 別名1, 別名2；下一場聽打後自動改正）\n\n<!-- 單行註解：Pizza = 披薩 -->\nHearby = Herbie, 賀比 <!-- Herby 也常見 -->\n<!-- 不自動改：\n     流星 = 劉興\n-->\n## 也是標題 = 不是別名\nTalky = Tokey\n<!-- 沒收尾的註解一路算到檔尾\nFully = Fooly\n",
+      "people" : "# 人\n\n<!-- 範例：\n## 假人\n- 別名：假名字、假名二\n-->\n## Kevin\n- 別名：Kevien <!-- 舊寫法：Kevyn -->\n",
+      "text" : "Kevien 說 Herbie 很好，賀比 跟 Tokey 也是；別名1 不動"
+    },
+    {
+      "applied" : "Kevin 說 Hearby 很好，賀比 跟 Talky 也是；別名1 不動",
+      "count" : 3,
+      "expected" : [
+        [
+          "Kevien",
+          "Kevin"
+        ],
+        [
+          "Herbie",
+          "Hearby"
+        ],
+        [
+          "Tokey",
+          "Talky"
+        ]
+      ],
+      "glossary" : "# 詞\r\nHearby = Herbie\r\n<!-- a = bb -->Talky = Tokey\r\n",
+      "people" : "# 人\r\n\r\n## Kevin\r\n- 別名：Kevien\r\n",
+      "text" : "Kevien 說 Herbie 很好，賀比 跟 Tokey 也是；別名1 不動"
+    }
+  ],
+  "contract" : 1,
+  "name" : "alias_table"
+}

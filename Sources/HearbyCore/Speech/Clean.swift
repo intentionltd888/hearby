@@ -7,6 +7,19 @@ public enum Clean {
         s.applyingTransform(StringTransform("Hans-Hant"), reverse: false) ?? s
     }
 
+    /// 簡轉繁，但 keep 裡的名字（名冊）照原樣留著：ICU 會把姓氏「涂」當成「塗」的簡體轉掉。
+    /// 會被轉到的名字先換成私用區字元、轉完再換回來；keep 是空的＝跟 toTraditional(s) 一樣
+    public static func toTraditional(_ s: String, keep: [String]) -> String {
+        let risky = Array(keep.filter { !$0.isEmpty && toTraditional($0) != $0 }.sorted { $0.count > $1.count }.prefix(6000))
+        guard !risky.isEmpty else { return toTraditional(s) }
+        let mark = risky.indices.map { String(Character(UnicodeScalar(0xE000 + $0)!)) }
+        var t = s
+        for (i, n) in risky.enumerated() { t = t.replacingOccurrences(of: n, with: mark[i]) }
+        t = toTraditional(t)
+        for (i, n) in risky.enumerated() { t = t.replacingOccurrences(of: mark[i], with: n) }
+        return t
+    }
+
     /// 標點全形化：前一字元是 CJK 才替換；句點另需後一字元也是 CJK／空白／行尾
     public static func normalizePunct(_ s: String) -> String {
         let map: [Character: Character] = [",": "，", "!": "！", "?": "？", ";": "；", ":": "："]
@@ -77,18 +90,18 @@ public enum Clean {
         try text.write(to: url, atomically: true, encoding: .utf8)
     }
 
-    // MARK: 別名回灌（越用越好用的實體）：讀 memory/PEOPLE.md 與 GLOSSARY.md 的別名，純字串替換
+    // MARK: 別名回灌（越用越好用的實體）：讀 memory/PEOPLE.md、GLOSSARY.md 的別名與 NAMES.md 換法「一律」的，純字串替換
     //
     // 格式（兩個檔都認）：
     //   - 別名：Kevien、Kevyn      ← PEOPLE.md 某人段落底下
     //   Kevin = Kevien, Kevyn       ← GLOSSARY.md 一行一組
+    // HTML 註解（<!-- … -->）裡的字不算；GLOSSARY.md 的 # 標題行也不算（表頭「正名 = 別名1, 別名2」是寫法說明，不是一組別名）
     public static func aliasTable() -> [(alias: String, canonical: String)] {
         var out: [(String, String)] = []
-        let fm = FileManager.default
         let people = Paths.memory.appendingPathComponent("PEOPLE.md")
         if let s = try? String(contentsOf: people, encoding: .utf8) {
             var current: String? = nil
-            for raw in s.components(separatedBy: "\n") {
+            for raw in stripHTMLComments(s).components(separatedBy: "\n") {
                 let line = raw.trimmingCharacters(in: .whitespaces)
                 if line.hasPrefix("## ") { current = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces); continue }
                 guard let c = current else { continue }
@@ -99,16 +112,35 @@ public enum Clean {
         }
         let gl = Paths.memory.appendingPathComponent("GLOSSARY.md")
         if let s = try? String(contentsOf: gl, encoding: .utf8) {
-            for raw in s.components(separatedBy: "\n") {
+            for raw in stripHTMLComments(s).components(separatedBy: "\n") {
                 let line = raw.trimmingCharacters(in: .whitespaces)
+                if line.hasPrefix("#") { continue }
                 guard let eq = line.range(of: " = ") ?? line.range(of: "＝") else { continue }
                 let canonical = String(line[..<eq.lowerBound]).trimmingCharacters(in: CharacterSet(charactersIn: "- ")).trimmingCharacters(in: .whitespaces)
                 guard !canonical.isEmpty else { continue }
                 for a in splitTerms(String(line[eq.upperBound...])) where a != canonical && a.count >= 2 { out.append((a, canonical)) }
             }
         }
-        _ = fm
+        // 名字確認帳（NAMES.md）換法「一律」的：撞名檢查過，聽打完直接換
+        if let s = try? String(contentsOf: Paths.memory.appendingPathComponent(NameLedger.file), encoding: .utf8) {
+            out += NameLedger.aliasPairs(NameLedger.parse(s).entries)
+        }
         return out
+    }
+
+    /// 去掉 HTML 註解（<!-- … -->，可以跨行；沒收尾的一路算到檔尾）。註解裡的換行留著，其他行的行號不變；CRLF 當 LF
+    static func stripHTMLComments(_ s: String) -> String {
+        var rest = Substring(s.replacingOccurrences(of: "\r\n", with: "\n"))
+        var out = ""
+        while let open = rest.range(of: "<!--") {
+            out += rest[..<open.lowerBound]
+            let inside = rest[open.upperBound...]
+            let close = inside.range(of: "-->")
+            let comment = close.map { inside[..<$0.lowerBound] } ?? inside
+            out += String(repeating: "\n", count: comment.unicodeScalars.filter { $0 == "\n" }.count)
+            rest = close.map { inside[$0.upperBound...] } ?? ""
+        }
+        return out + rest
     }
 
     /// 套用別名表（長別名先換，免得短的吃掉長的）

@@ -28,6 +28,13 @@
 | 19 | 已經開著時再開一次 Hearby：不會開第二個，改成把面板／紀錄視窗叫到前面 | ◐ 程式面 |
 | 20 | 錄音中或整理中從工作列選單結束：先問 | ◐ 程式面 |
 | 21 | 清洗檢查（`scripts/check-clean.sh --strict`）綠；二進位不含這台機器的路徑 | ✅ |
+| 22 | 記憶跟著紀錄走（重新整理全篇、自己改、請 AI 改一段、`--memory-rebuild [<md>]`）與別名表（不收 `#` 標題行與 HTML 註解）：跟 macOS 同一套 | ✅ 合約測試 `memory_sync`、`alias_table` |
+| 23 | 名冊與名字更正（`memory\ROSTER.md` 在才帶；AI 的名字更正只改那幾行、沒把握標 `[[?]]`；名冊上的名字不被簡轉繁改掉）：跟 macOS 同一套 | ✅ 合約測試 `build_notes`（`meeting_roster*`）、`name_fixes`、`record_md`；`RosterNamesSurviveConversion` |
+| 24 | 名字確認帳（NAMES.md：自己改、重新整理的更正、--memory-rebuild 都記下改過的名字；撞名檢查；要確認在紀錄頁答一次）：跟 macOS 同一套 | ✅ 合約測試 `name_ledger` |
+| 25 | 現況（STATE.md：待辦與定案用它的、另外帶案子現況與還沒定的事）：跟 macOS 同一套 | ✅ 合約測試 `name_ledger`（makeWithState）、`build_notes` |
+| 26 | 之前的事（紀錄一節、做完的把別場待辦打勾）：跟 macOS 同一套 | ✅ 合約測試 `name_ledger`（follow*）、`build_notes` |
+| 27 | 讀音比對（候選一節、簡稱守門、拼音表同一份）：跟 macOS 同一套 | ✅ 合約測試 `sound_alike`、`name_fixes`、`build_notes` |
+| 28 | 改標題（清單滑過出現筆、右鍵「改標題…」、原地改；`--rename <md 或資料夾> "<新標題>"`）：跟 macOS 同一套 | ✅ 合約測試 `meeting_rename`；介面 ◐ 程式面 |
 
 ## 怎麼驗（虛擬機）
 

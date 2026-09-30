@@ -90,7 +90,7 @@ public enum RecordMD {
             if line.hasPrefix("## ") { skipSection = line.contains("修正紀錄") }
             if skipSection { continue }
             if line.contains("模型未交代此條") || line.contains("AI 整理未執行") { continue }
-            if line.hasPrefix("> 音檔：") || line.hasPrefix("> ⚠") || line == "---" { continue }
+            if line.hasPrefix("> 音檔：") || line.hasPrefix("> ⚠") || line.hasPrefix("> 本機模型整理") || line.hasPrefix("> 名字更正") || line.hasPrefix("> 聲紋") || line == "---" { continue }
             if line.hasPrefix("（AI 整理失敗") || line.hasPrefix("（AI 整理已關閉") || line.hasPrefix("（AI 整理進行中") || line.hasPrefix("（只有逐字稿") {
                 out.append("（本場僅整理逐字稿，未附 AI 摘要）")
                 continue
@@ -120,6 +120,32 @@ public enum RecordMD {
         guard let r = md.range(of: "## 逐字稿", options: .backwards) else { return nil }
         let t = String(md[r.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
         return t.isEmpty ? nil : t
+    }
+
+    /// 改標題：表頭第一行「> Hearby 錄音｜時長 …｜標題」的標題換成新的（原本沒有標題就接在後面）；「> 音檔：路徑」交給 audio 換
+    /// （回 nil＝不動）。只看第一個「## 」之前的表頭；第一行不是「…｜時長 …」的格式就不動它；其他行一字不改
+    public static func retitled(md: String, title: String, audio: (String) -> String? = { _ in nil }) -> String {
+        var lines = md.components(separatedBy: "\n")
+        var sawHead = false
+        for i in lines.indices {
+            let cr = lines[i].hasSuffix("\r")
+            let line = cr ? String(lines[i].dropLast()) : lines[i]
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("## ") { break }
+            guard trimmed.hasPrefix("> "), let at = line.range(of: "> ") else { continue }
+            let lead = String(line[..<at.lowerBound])
+            let body = String(trimmed.dropFirst(2))
+            if !sawHead {
+                sawHead = true
+                let parts = body.components(separatedBy: "｜")
+                guard parts.count >= 2, parts[1].trimmingCharacters(in: .whitespaces).hasPrefix("時長") else { continue }
+                lines[i] = lead + "> " + (Array(parts.prefix(2)) + [title]).joined(separator: "｜") + (cr ? "\r" : "")
+            } else if body.hasPrefix("音檔：") {
+                let path = String(body.dropFirst("音檔：".count)).trimmingCharacters(in: .whitespaces)
+                if let p = audio(path) { lines[i] = lead + "> 音檔：" + p + (cr ? "\r" : "") }
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// 覆寫前備份成 _舊版N.md

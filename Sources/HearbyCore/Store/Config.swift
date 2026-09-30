@@ -13,7 +13,7 @@ public struct Config: Codable, Equatable {
     public var outputRoot: String? = nil
     /// 第二落點（副本）；nil＝不寫
     public var mirrorDir: String? = nil
-    /// 整理用哪個：none（只要逐字稿）／claude／codex；延伸：ollama／api
+    /// 整理用哪個：none（只要逐字稿）／claude／codex／endpoint（本機模型：Ollama、LM Studio 或自己的伺服器）
     public var provider: String = "none"
     /// 外觀：system／light／dark
     public var appearance: String = "system"
@@ -21,6 +21,8 @@ public struct Config: Codable, Equatable {
     public var glossaryPath: String? = nil
     /// 記憶回流（預設關；精靈收尾卡可開）
     public var memoryEnabled: Bool = false
+    /// 整理時認聲音（實驗，只有 macOS 15 以上；預設關，見 Voices）
+    public var voicesEnabled: Bool = false
     /// 精靈走完了沒；沒走完從第幾頁續
     public var wizardDone: Bool = false
     public var wizardStep: Int = 0
@@ -44,8 +46,15 @@ public struct Config: Codable, Equatable {
     public var autoPDF: Bool = false
     /// 上次的會前準備（開錄前那一行）
     public var lastBrief: String? = nil
+    /// 錄音中面板收起來時，螢幕上放一條小狀態列；nil＝開（預設）
+    public var floatingBar: Bool? = nil
+    /// 本機模型端點（provider＝endpoint）：位址（nil＝http://127.0.0.1:11434，Ollama 預設）與模型名
+    public var endpointURL: String? = nil
+    public var endpointModel: String? = nil
 
     public init() {}
+
+    public var floatingBarOn: Bool { floatingBar ?? true }
 
     /// 加欄位不破壞舊檔：每個欄位缺了就用預設值
     public init(from decoder: Decoder) throws {
@@ -58,6 +67,7 @@ public struct Config: Codable, Equatable {
         appearance = try c.decodeIfPresent(String.self, forKey: .appearance) ?? d.appearance
         glossaryPath = try c.decodeIfPresent(String.self, forKey: .glossaryPath)
         memoryEnabled = try c.decodeIfPresent(Bool.self, forKey: .memoryEnabled) ?? d.memoryEnabled
+        voicesEnabled = try c.decodeIfPresent(Bool.self, forKey: .voicesEnabled) ?? d.voicesEnabled
         wizardDone = try c.decodeIfPresent(Bool.self, forKey: .wizardDone) ?? d.wizardDone
         wizardStep = try c.decodeIfPresent(Int.self, forKey: .wizardStep) ?? d.wizardStep
         scene = try c.decodeIfPresent(String.self, forKey: .scene) ?? d.scene
@@ -73,6 +83,9 @@ public struct Config: Codable, Equatable {
         modelMirror = try c.decodeIfPresent(String.self, forKey: .modelMirror)
         autoPDF = try c.decodeIfPresent(Bool.self, forKey: .autoPDF) ?? d.autoPDF
         lastBrief = try c.decodeIfPresent(String.self, forKey: .lastBrief)
+        floatingBar = try c.decodeIfPresent(Bool.self, forKey: .floatingBar)
+        endpointURL = try c.decodeIfPresent(String.self, forKey: .endpointURL)
+        endpointModel = try c.decodeIfPresent(String.self, forKey: .endpointModel)
     }
 }
 

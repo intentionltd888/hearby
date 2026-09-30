@@ -6,6 +6,8 @@ public enum Repolish {
     public static func whole(mdURL: URL, corrections: String, provider: Provider, onStage: ((String) -> Void)? = nil) throws -> (URL, String) {
         // 這三件事都要 AI。沒接（none）就明講、不動檔案——以前只有圖形介面擋，命令列會把整理好的內容洗成「只有逐字稿」還印 ok
         guard provider.id != "none" else { throw HearbyError("這個動作要用 AI 整理，但現在的整理方式是「只要逐字稿」。先到設定選「用我的訂閱」，或在命令列加 --provider claude（或 codex）。") }
+        MeetingBusy.begin(mdURL.deletingLastPathComponent())
+        defer { MeetingBusy.end(mdURL.deletingLastPathComponent()) }
         onStage?("讀取原紀錄…")
         guard let oldMD = try? String(contentsOf: mdURL, encoding: .utf8) else { throw HearbyError("讀不到原紀錄：\(mdURL.lastPathComponent)") }
         guard let transcript = RecordMD.transcript(of: oldMD) else { throw HearbyError("原紀錄裡找不到逐字稿段，無法重新整理") }
@@ -64,9 +66,16 @@ public enum Repolish {
         input.scenario = scenario
         input.onsiteCount = onsiteCount
         input.brief = brief
+        input.pauseNote = oldMD.components(separatedBy: "\n").first(where: { $0.hasPrefix("> ⏸ ") }).map { String($0.dropFirst("> ⏸ ".count)) }
         input.baseline = baseline.trimmingCharacters(in: .whitespacesAndNewlines)
         input.history = history
         input.scene = RecordScene.from(mdTitle: oldMD)
+        input.context = PolishContext.load(excluding: mdURL.deletingPathExtension().lastPathComponent)
+        // 認聲音（實驗；macOS 15 以上、設定打開才跑）：分軌還在就分開切，不然用這場的 m4a；出錯只記 log，不擋整理
+        let voiceSources = Voices.sources(meetingDir: mdURL.deletingLastPathComponent(), m4a: audioURL(mdURL: mdURL, audioLine: audioLine))
+        if let v = Voices.recognize(sources: voiceSources, transcript: input.transcript, onStage: onStage) {
+            input.voiceTags = v.tags; input.voiceLine = v.line
+        }
         var (md, summary, err) = Polish.buildNotes(input, provider: provider)
         if let e = err { throw HearbyError(e) }
         md = restoreTodoChecks(md: md, oldTodos: rec.todos)
@@ -76,14 +85,24 @@ public enum Repolish {
             let block = "## 修正紀錄\n" + (history + ["\(df.string(from: Date()))：\(corrLine)"]).map { "- \($0)" }.joined(separator: "\n") + "\n\n"
             if let tr = md.range(of: "## 逐字稿") { md.replaceSubrange(tr.lowerBound..<tr.lowerBound, with: block) } else { md += "\n\n" + block }
         }
-        md = Clean.toTraditional(md)
-        summary = Clean.toTraditional(summary)
+        md = Clean.toTraditional(md, keep: input.context?.names ?? [])   // 名冊上的名字不簡轉繁（「涂」不是「塗」）
+        summary = Clean.toTraditional(summary, keep: input.context?.names ?? [])
         onStage?("存檔中…")
         RecordMD.backupIfExists(mdURL)
         try md.write(to: mdURL, atomically: true, encoding: .utf8)
         try? Mirror.copy(mdURL)
-        try? MemoryStore.appendMeeting(mdURL: mdURL)
+        NameLedger.learn(corrections: corrections, mdURL: mdURL)   // 你寫的「A」應為「B」是名字的，記進名字確認帳
+        // 記憶跟著新版走：Hearby 寫的、沒人動過的行換成新版，使用者改過的不動
+        _ = try? MemoryStore.sync(mdURL: mdURL)
         return (mdURL, summary)
+    }
+
+    /// 這場的錄音：表頭「> 音檔：」寫的那個 m4a 還在就用它，不然找紀錄旁邊同名的 .m4a
+    public static func audioURL(mdURL: URL, audioLine: String) -> URL? {
+        let fm = FileManager.default
+        if audioLine.hasSuffix(".m4a"), fm.fileExists(atPath: audioLine) { return URL(fileURLWithPath: audioLine) }
+        let side = mdURL.deletingPathExtension().appendingPathExtension("m4a")
+        return fm.fileExists(atPath: side.path) ? side : nil
     }
 
     /// 舊紀錄「## 與會者」裡真的算名字的：去掉「（推測）」這類註記，
@@ -111,6 +130,8 @@ public enum Repolish {
     public static func translate(mdURL: URL, language: String, provider: Provider) throws -> URL {
         // 這三件事都要 AI。沒接（none）就明講、不動檔案——以前只有圖形介面擋，命令列會把整理好的內容洗成「只有逐字稿」還印 ok
         guard provider.id != "none" else { throw HearbyError("這個動作要用 AI 整理，但現在的整理方式是「只要逐字稿」。先到設定選「用我的訂閱」，或在命令列加 --provider claude（或 codex）。") }
+        MeetingBusy.begin(mdURL.deletingLastPathComponent())
+        defer { MeetingBusy.end(mdURL.deletingLastPathComponent()) }
         guard let md = try? String(contentsOf: mdURL, encoding: .utf8) else { throw HearbyError("讀不到原紀錄") }
         let parts = md.components(separatedBy: "\n---\n\n## 逐字稿")
         let record = parts[0]
@@ -192,6 +213,7 @@ public enum Repolish {
         RecordMD.backupIfExists(mdURL)
         try lines.joined(separator: "\n").write(to: mdURL, atomically: true, encoding: .utf8)
         try? Mirror.copy(mdURL)
+        _ = try? MemoryStore.sync(mdURL: mdURL)
     }
 
     static func restoreTodoChecks(md: String, oldTodos: [(item: String, owner: String, due: String, done: Bool)]) -> String {
@@ -214,5 +236,22 @@ public enum Mirror {
         let dst = m.appendingPathComponent(md.lastPathComponent)
         let data = try Data(contentsOf: md)
         try data.write(to: dst, options: .atomic)
+    }
+
+    /// 一場改了名字：副本資料夾裡這一場的檔（<舊 id>.md、翻譯 <舊 id>.en.md…）跟著改名。
+    /// 新名字已經有檔＝不覆寫、舊的留著（skipped 列出來）。沒設副本資料夾＝什麼都不做
+    public static func rename(from old: String, to new: String) -> (moved: [URL], skipped: [String]) {
+        let fm = FileManager.default
+        guard let m = Paths.mirror, old != new, let names = try? fm.contentsOfDirectory(atPath: m.path) else { return ([], []) }
+        var moved: [URL] = [], skipped: [String] = []
+        for n in names.sorted() where n.hasPrefix(old + ".") {
+            let src = m.appendingPathComponent(n)
+            let dst = m.appendingPathComponent(new + n.dropFirst(old.count))
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: src.path, isDirectory: &isDir), !isDir.boolValue else { continue }
+            if fm.fileExists(atPath: dst.path), dst.lastPathComponent.lowercased() != n.lowercased() { skipped.append(n); continue }
+            do { try MeetingRename.move(src, to: dst); moved.append(dst) } catch { skipped.append(n) }
+        }
+        return (moved, skipped)
     }
 }

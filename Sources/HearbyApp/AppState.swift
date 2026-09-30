@@ -17,6 +17,11 @@ final class AppState: ObservableObject {
     private var timer: Timer?
     private var meta = MeetingMeta()
     private var recTicks = 0
+    /// 麥克風健康（沒暫停卻連續兩分鐘沒聲音＝多半選錯麥克風）
+    private var micWatch = MicWatch(now: Date())
+    /// 暫停多久之後提醒一次（第一次 10 分鐘，之後每 30 分鐘）
+    private var nextPauseReminder: TimeInterval = 600
+    static let micSilentAlertPrefix = "麥克風兩分鐘沒收到聲音"
     private var recordActivity: NSObjectProtocol?
     private var sleepObservers: [NSObjectProtocol] = []
     private var download: ModelDownload?
@@ -40,6 +45,8 @@ final class AppState: ObservableObject {
         panel.brief = cfg.lastBrief ?? ""
         panel.onStart = { [weak self] in self?.start() }
         panel.onStop = { [weak self] in self?.stop() }
+        panel.onPause = { [weak self] in self?.pause() }
+        panel.onResume = { [weak self] in self?.resume() }
         panel.onDismiss = { [weak self] in self?.dismiss() }
         panel.onOpenWindow = { [weak self] in self?.openWindow(); WindowNav.shared.tab = 0 }
         panel.onOpenSettings = { [weak self] in self?.openWindow(); WindowNav.shared.tab = 1 }
@@ -112,11 +119,15 @@ final class AppState: ObservableObject {
         panel.alerts = []
         panel.micHistory = []; panel.sysHistory = []
         panel.elapsedText = "00:00"
+        panel.paused = false; panel.pausedText = ""; panel.micName = ""
         Task { @MainActor in
             do {
                 let warns = try await rec.start()
                 meta.warnings = warns
                 panel.alerts = warns
+                panel.micName = rec.micDeviceName
+                micWatch = MicWatch(now: Date())
+                nextPauseReminder = 600
                 if let free = DualRecorder.availableDiskBytes(at: Pipeline.recordingsDir), free < 2_000_000_000 {
                     panel.alerts.append("磁碟只剩約 \(String(format: "%.1f", Double(free) / 1_000_000_000)) GB，長會議可能中途存不進去")
                 }
@@ -140,8 +151,8 @@ final class AppState: ObservableObject {
         sleepObservers = [
             nc.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { _ in rec.noteSleep() },
             nc.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-                rec.noteWake()
-                self?.panel.alerts.append("電腦剛才睡著了，睡眠期間沒有聲音（時長已扣除）")
+                // 暫停中睡著不算（那段本來就不錄），不用跟使用者說
+                if rec.noteWake() { self?.panel.alerts.append("電腦剛才睡著了，睡眠期間沒有聲音（時長已扣除）") }
             },
         ]
     }
@@ -156,9 +167,33 @@ final class AppState: ObservableObject {
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self, let rec = self.recorder, self.phase == .recording else { return }
-            let elapsed = max(0, Date().timeIntervalSince(rec.startedAt) - rec.sleepSeconds)
-            let s = Int(elapsed)
-            self.panel.elapsedText = s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, (s % 3600) / 60, s % 60) : String(format: "%02d:%02d", s / 60, s % 60)
+            let now = Date()
+            let elapsed = rec.recordedSeconds
+            self.panel.elapsedText = Self.clockText(elapsed)
+            let paused = rec.isPaused
+            if self.panel.paused != paused { self.panel.paused = paused }
+            if paused {
+                let p = rec.currentPauseSeconds
+                self.panel.pausedText = Self.clockText(p)
+                if p >= self.nextPauseReminder {
+                    self.nextPauseReminder += 1800
+                    HearbyLog.write("rec pause reminder \(Int(p))s")
+                    self.notify(title: "Hearby 還在暫停中", body: "已經暫停 \(PauseSpan.durText(p))，這段沒有在錄。要繼續就按選單列的 Hearby → 繼續錄。")
+                }
+            } else {
+                // 麥克風健康：沒暫停卻連續兩分鐘幾乎沒聲音＝多半選錯麥克風或被靜音；有聲音了就收掉提醒
+                switch self.micWatch.update(level: rec.micLevel, now: now) {
+                case .silent?:
+                    // 用的是哪支麥克風，計時底下那行已經寫了
+                    HearbyLog.write("rec mic silent 120s dev=\(rec.micDeviceName)")
+                    self.panel.alerts.append("\(Self.micSilentAlertPrefix)：是不是選錯麥克風，或被靜音了？")
+                case .recovered?:
+                    self.panel.alerts.removeAll { $0.hasPrefix(Self.micSilentAlertPrefix) }
+                case nil:
+                    break
+                }
+            }
+            if self.panel.micName != rec.micDeviceName { self.panel.micName = rec.micDeviceName }
             self.panel.micHistory.append(rec.micLevel)
             self.panel.sysHistory.append(rec.sysLevel)
             if self.panel.micHistory.count > PanelModel.waveSlots { self.panel.micHistory.removeFirst() }
@@ -179,15 +214,46 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// 00:00 或 1:02:03
+    static func clockText(_ seconds: TimeInterval) -> String {
+        let s = Int(Fmt.clampSeconds(seconds))
+        return s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, (s % 3600) / 60, s % 60) : String(format: "%02d:%02d", s / 60, s % 60)
+    }
+
+    // MARK: 暫停／繼續（phase 仍是 recording；裝置不關，只是不寫檔）
+    func pause() {
+        guard phase == .recording, let rec = recorder, rec.pause() else { return }
+        nextPauseReminder = 600
+        panel.paused = true
+        panel.pausedText = "00:00"
+        meta.pauses = rec.pauses
+        meta.seconds = rec.recordedSeconds
+        Pipeline.saveMeta(meta, to: rec.dir)   // 當下就存：暫停中當機，重開補整理也知道停在哪
+        HearbyLog.write("rec pause at \(Int(rec.recordedSeconds))s")
+    }
+
+    func resume() {
+        guard phase == .recording, let rec = recorder, rec.resume() else { return }
+        panel.paused = false
+        panel.pausedText = ""
+        micWatch.reset(now: Date())
+        meta.pauses = rec.pauses
+        Pipeline.saveMeta(meta, to: rec.dir)
+        HearbyLog.write("rec resume after \(Int(rec.pauses.last?.seconds ?? 0))s")
+    }
+
     // MARK: 停止 → 整理
     func stop() {
         guard let rec = recorder else { return }
         timer?.invalidate(); timer = nil
         removeSleepObservers()
         let secs = rec.stop()
+        panel.paused = false
+        panel.pausedText = ""
         meta.seconds = secs
         meta.micMax = rec.micMax
         meta.sysMax = rec.sysMax
+        meta.pauses = rec.pauses.isEmpty ? nil : rec.pauses
         var warnings = meta.warnings
         if source.wantsSystemAudio, !rec.systemAudioActive, !warnings.contains(where: { $0.contains("系統聲音") }) { warnings.append("系統聲音軌中途中斷或未啟用") }
         if rec.systemAudioActive, rec.sysBufferCount == 0 { warnings.append("系統聲音串流已啟動，但整場沒有收到任何聲音資料") }
@@ -409,6 +475,22 @@ final class AppState: ObservableObject {
                     guard provider.id != "none" else { throw HearbyError("先到設定把紀錄交給 Claude 或 ChatGPT 整理，才能翻譯") }
                     let u = try Repolish.translate(mdURL: md, language: lang, provider: provider)
                     DispatchQueue.main.async { done(.success(u)) }
+                } catch { DispatchQueue.main.async { done(.failure(error)) } }
+            }
+        }
+        a.renameMeeting = { [weak self] dir, title, done in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let r = try MeetingRename.rename(dir: dir, to: title)
+                    DispatchQueue.main.async {
+                        // 完成頁還指著這一場：跟著換，按「打開這份紀錄」才找得到
+                        if let self, let u = self.panel.doneMD, let n = r.mdURL,
+                           u.deletingLastPathComponent().standardizedFileURL.path == dir.standardizedFileURL.path {
+                            self.panel.doneMD = n
+                            self.panel.doneTitle = r.newID
+                        }
+                        done(.success(r))
+                    }
                 } catch { DispatchQueue.main.async { done(.failure(error)) } }
             }
         }

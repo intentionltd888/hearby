@@ -1,5 +1,7 @@
 // DualRecorder — 雙軌錄音（介面層切割：睡眠通知改由殼呼叫 noteSleep／noteWake）
-//   軌 1（房間裡）：麥克風 AVAudioEngine → mic.wav；IO 單元直接綁在預設輸入裝置上，不經過聲音輸出（見 bindMicToDefaultInput）
+//   軌 1（房間裡）：麥克風 AudioQueue → mic.wav；只開輸入裝置、不碰聲音輸出（見 MicQueue.swift）。
+//   開、關、換裝置都在背景，等的一方有上限（開 3 秒）：系統音訊服務卡住時，主執行緒不跟著卡。
+//   按停止：兩軌的收尾一起在背景做，主執行緒合計最多等 2 秒（輸出裝置卡住時，關保活與 tap 也會卡；見 stop()）。
 //   軌 2（電腦裡）：系統聲音 → system.wav；macOS 14.4+ 走 Core Audio process tap（純音訊權限，
 //   不在「螢幕錄製」那類每次更新重問的名單），14.0–14.3 退路 ScreenCaptureKit。
 //   tap 要有輸出裝置在跑才送 buffer，所以兩軌模式另在預設輸出上跑一條只送靜音的 IOProc（見 startOutputKeepAlive）。
@@ -31,24 +33,44 @@ public final class DualRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
     private var sysFile: CrashSafeWavWriter?
     public private(set) var sysBufferCount = 0
     public private(set) var sysStopError: String?
-    private let engine = AVAudioEngine()
     private var stream: SCStream?
-    private var micConverter: AVAudioConverter?
+    // 系統聲那一軌轉檔的目標格式（16 kHz 單聲道浮點，寫檔時轉 s16）
     private let micOutFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: kSampleRate, channels: 1, interleaved: false)!
     private let sysQueue = DispatchQueue(label: "hearby.sysaudio")
     private var _stopping = false
     private var isStopping: Bool { levelLock.withLock { _stopping } }
     private var sysConverter: AVAudioConverter?
     private var sysConverterInFormat: AVAudioFormat?
-    private var micConverterInFormat: AVAudioFormat?
-    private var configObserver: NSObjectProtocol?
-    private var micDeviceID = AudioDeviceID(0)  // IO 單元現在綁著的輸入裝置；0＝沒綁上（走系統的聚合裝置）
-    private var defaultInputListener: AudioObjectPropertyListenerBlock?
-    public private(set) var micInterrupted = false
-    public private(set) var micDead = false
-    public var micRecovered = false
-    private var retapAttempts = 0
-    private var retryInFlight = false
+
+    // 麥克風（見 MicQueue.swift）：每一格的回呼、寫檔、關檔都在 micCB 上（同一條序列佇列＝關檔不會跟寫入撞）；
+    // 開、關、換裝置在 micCtl 上。兩條都不是主執行緒；會卡在系統音訊服務裡的呼叫，等的一方都有上限
+    private let micCB = DispatchQueue(label: "hearby.mic", qos: .userInitiated)
+    private let micCtl = DispatchQueue(label: "hearby.mic.ctl", qos: .userInitiated)
+    private var mic: MicQueue?                  // 只在 micCtl 上動
+    private var micCheck: DispatchSourceTimer?  // 只在 micCtl 上動
+    private var lastDefaultInput = AudioDeviceID(0)
+    private var reopenInFlight = false
+    private var reopenAttempts = 0
+    private var stallReopens = 0
+    /// 麥克風開最多等幾秒；逾時用人話說明，不讓等的一方跟著卡住
+    public static let micStartTimeout: TimeInterval = 3
+    /// 按停止時主執行緒合計最多等幾秒（兩軌收尾一起在背景做）
+    public static let stopTimeout: TimeInterval = 2
+    /// 這一條幾秒沒送任何一格就重開（裝置被拔、系統音訊服務重啟）；連續重開都沒聲音，間隔加倍（最多 48 秒）
+    static let micStallSeconds: TimeInterval = 3
+    private var _micInterrupted = false
+    private var _micDead = false
+    private var _micRecovered = false
+    private var _micDeviceName = ""
+    private var _stallCheckAfter = Date.distantPast  // 睡眠中不查卡住；醒來先緩 5 秒
+    public var micInterrupted: Bool { levelLock.withLock { _micInterrupted } }
+    public var micDead: Bool { levelLock.withLock { _micDead } }
+    public var micRecovered: Bool {
+        get { levelLock.withLock { _micRecovered } }
+        set { levelLock.withLock { _micRecovered = newValue } }
+    }
+    /// 正在用的麥克風（給畫面看：錄錯麥克風是最常見的「白錄一場」）
+    public var micDeviceName: String { levelLock.withLock { _micDeviceName } }
 
     // process tap（14.4+）
     private var tapID: AudioObjectID = 0
@@ -71,26 +93,52 @@ public final class DualRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
     private func setMic(_ l: Float) { levelLock.withLock { _micLevel = l; if l > _micMax { _micMax = l } } }
     private func setSys(_ l: Float) { levelLock.withLock { _sysLevel = l; if l > _sysMax { _sysMax = l } } }
 
-    public private(set) var startedAt = Date()
     public private(set) var systemAudioActive = false
 
     private var _micWriteFailures = 0
     private var _sysWriteFailures = 0
     public var writeFailures: Int { levelLock.withLock { _micWriteFailures + _sysWriteFailures } }
 
-    // 睡眠扣除（殼負責通知）
-    private var sleepBegan: Date?
-    private var _sleepSeconds: TimeInterval = 0
-    public var sleepSeconds: TimeInterval { levelLock.withLock { _sleepSeconds } }
-    public private(set) var sleptWhileRecording = false
-    public func noteSleep() { levelLock.withLock { if sleepBegan == nil { sleepBegan = Date() } } }
-    public func noteWake() {
+    // 時間帳：睡眠與暫停都扣（殼負責通知睡眠；暫停由使用者按）。細節見 Pause.swift
+    private var clock = RecordingClock(startedAt: Date())
+    public var startedAt: Date { levelLock.withLock { clock.startedAt } }
+    public var sleepSeconds: TimeInterval { levelLock.withLock { clock.sleepSeconds } }
+    public var sleptWhileRecording: Bool { levelLock.withLock { clock.sleptWhileRecording } }
+    public var isPaused: Bool { levelLock.withLock { clock.isPaused } }
+    public var pauses: [PauseSpan] { levelLock.withLock { clock.pauses } }
+    /// 真的有錄到的秒數（扣掉睡眠與暫停）
+    public var recordedSeconds: TimeInterval { levelLock.withLock { clock.recorded(at: Date()) } }
+    /// 這一次暫停了多久（沒在暫停＝0）
+    public var currentPauseSeconds: TimeInterval { levelLock.withLock { clock.currentPause(at: Date()) } }
+    public func noteSleep() { levelLock.withLock { _ = clock.noteSleep(at: Date()); _stallCheckAfter = .distantFuture } }
+    /// 回 true＝錄音中睡過一段（暫停中睡著不算：那段本來就不錄）
+    @discardableResult public func noteWake() -> Bool {
         levelLock.withLock {
-            if let b = sleepBegan {
-                _sleepSeconds += Date().timeIntervalSince(b)
-                sleepBegan = nil
-                sleptWhileRecording = true
+            _stallCheckAfter = Date().addingTimeInterval(5)  // 醒來後麥克風要一下子才恢復送音，先別當成卡住
+            return clock.noteWake(at: Date())
+        }
+    }
+
+    /// 暫停：裝置不關、只是不寫檔，所以繼續是即時的（重接音訊裝置可能卡住，見 startOutputKeepAlive 的說明）。
+    /// 兩軌看同一個旗標，同一刻停寫、同一刻恢復，時間軸照樣對齊。
+    @discardableResult public func pause() -> Bool {
+        levelLock.withLock {
+            guard !_stopping, clock.pause(at: Date()) else { return false }
+            _micLevel = 0; _sysLevel = 0
+            return true
+        }
+    }
+    @discardableResult public func resume() -> Bool { levelLock.withLock { !_stopping && clock.resume(at: Date()) } }
+
+    /// 這一刻收到的聲音要不要寫：停止中＝丟；暫停中＝丟，並把畫面上的音量歸零
+    private func shouldWrite(mic: Bool) -> Bool {
+        levelLock.withLock {
+            if _stopping { return false }
+            if clock.isPaused {
+                if mic { _micLevel = 0 } else { _sysLevel = 0 }
+                return false
             }
+            return true
         }
     }
 
@@ -118,7 +166,7 @@ public final class DualRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
             throw HearbyError("麥克風權限未授權：系統設定 → 隱私權與安全性 → 麥克風 → 開啟 Hearby")
         }
         try startMic()
-        startedAt = Date()  // mic.wav 從這裡開始；系統聲音那軌起不來時可能要等約 10 秒，計時不能從那之後才算
+        levelLock.withLock { clock = RecordingClock(startedAt: Date()) }  // mic.wav 從這裡開始；系統聲音那軌起不來時可能要等約 10 秒，計時不能從那之後才算
         if source.wantsSystemAudio {
             do {
                 try await startSystem()
@@ -131,122 +179,139 @@ public final class DualRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
         return warnings
     }
 
+    /// 開麥克風：在背景開、這裡最多等 micStartTimeout 秒（start() 是 async，本來就不在主執行緒上）
     private func startMic() throws {
         let t0 = Date()
         do {
             micFile = try CrashSafeWavWriter(url: dir.appendingPathComponent("mic.wav"))
-            try installMicTapAndStart()
+            let m = try openMic()
+            levelLock.withLock { _micDeviceName = m.deviceName }
+            micCtl.sync {
+                mic = m
+                lastDefaultInput = m.device
+                startMicCheck()
+            }
         } catch {
-            // 畫面只給一句話；原始錯誤與花了多久記在這裡（裝置卡住的樣子＝等約 10 秒後回 'stop'）
+            // 畫面只給一句話；原始錯誤與花了多久記在這裡
             HearbyLog.write(String(format: "rec mic start fail %.1fs: ", Date().timeIntervalSince(t0)) + "\(error)")
             throw error
         }
-        configObserver = NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil
-        ) { [weak self] _ in DispatchQueue.main.async { self?.handleEngineConfigChange() } }
-        // IO 單元綁在固定裝置上之後，系統換預設麥克風（插拔耳機、在控制中心換）engine 不會自己跟；由這裡接手，照舊跟著預設走
-        let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in self?.handleDefaultInputChange() }
-        var addr = AudioDevices.defaultInputAddress
-        if AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &addr, .main, listener) == noErr {
-            defaultInputListener = listener
-        }
     }
 
-    private func installMicTapAndStart() throws {
-        let input = engine.inputNode
-        let bound = bindMicToDefaultInput()
-        let inFormat = input.inputFormat(forBus: 0)
-        guard inFormat.sampleRate > 0 else { throw HearbyError("找不到麥克風輸入裝置") }
-        HearbyLog.write("rec mic dev=\(AudioDevices.defaultInputName() ?? "?") bind=\(bound) sr=\(Int(inFormat.sampleRate)) ch=\(inFormat.channelCount)")
-        micConverter = AVAudioConverter(from: inFormat, to: micOutFormat)
-        micConverterInFormat = inFormat
-        input.installTap(onBus: 0, bufferSize: 4096, format: inFormat) { [weak self] buf, _ in
-            guard let self, !self.isStopping, let file = self.micFile else { return }
-            if self.micConverterInFormat != buf.format {
-                self.micConverter = AVAudioConverter(from: buf.format, to: self.micOutFormat)
-                self.micConverterInFormat = buf.format
-            }
-            guard let conv = self.micConverter else { return }
-            let cap = AVAudioFrameCount(Double(buf.frameLength) * kSampleRate / buf.format.sampleRate) + 32
-            guard let out = AVAudioPCMBuffer(pcmFormat: self.micOutFormat, frameCapacity: cap) else { return }
-            var consumed = false
-            var err: NSError?
-            conv.convert(to: out, error: &err) { _, status in
-                if consumed { status.pointee = .noDataNow; return nil }
-                consumed = true; status.pointee = .haveData; return buf
-            }
-            if out.frameLength > 0 {
-                self.setMic(rmsLevel(out))
-                if !file.write(out) { self.levelLock.withLock { self._micWriteFailures += 1 } }
-            }
+    /// 在背景開一條新的麥克風佇列（綁這一刻的預設輸入），最多等 micStartTimeout 秒。
+    /// 逾時＝放棄這一條（之後才起來也會馬上關掉），丟一句人話給畫面
+    private func openMic() throws -> MicQueue {
+        let m = MicQueue(callbackQueue: micCB) { [weak self] pcm in self?.micPCM(pcm) }
+        guard let r = Bounded.run(Self.micStartTimeout, { try m.start() }) else {
+            m.abandon()
+            HearbyLog.write("rec mic start timeout \(Int(Self.micStartTimeout))s（系統音訊服務沒回應）")
+            throw HearbyError("麥克風 \(Int(Self.micStartTimeout)) 秒沒有回應：這台 Mac 的音訊服務卡住了，重開機通常就好。")
         }
-        try engine.start()
+        try r.get()
+        return m
     }
 
-    private func handleEngineConfigChange(_ why: String = "config change") {
-        guard !isStopping else { return }
-        // 綁裝置這個動作本身也會讓 engine 發一次設定變更，而且晚一點才送到（開錄後約 0.1 秒）。
-        // engine 真的因硬體變更停下來時 isRunning 已經是 false；還在跑、綁的也還是預設麥克風＝沒有要接的，重接反而白白斷一截
-        if engine.isRunning, micDeviceID != 0, micDeviceID == AudioDevices.defaultInputID() {
-            HearbyLog.write("rec mic \(why) ignored: still running on dev \(micDeviceID)")
+    /// 麥克風的每一格（micCB 上）：已經是 16 kHz 單聲道 s16，原樣寫
+    private func micPCM(_ pcm: UnsafeBufferPointer<Int16>) {
+        guard shouldWrite(mic: true), let file = micFile else { return }
+        setMic(rmsLevel(pcm))
+        if !file.write(samples: pcm) { levelLock.withLock { _micWriteFailures += 1 } }
+    }
+
+    private func startMicCheck() {  // micCtl 上
+        let t = DispatchSource.makeTimerSource(queue: micCtl)
+        t.schedule(deadline: .now() + 1, repeating: 1, leeway: .milliseconds(250))
+        t.setEventHandler { [weak self] in self?.checkMic() }
+        t.resume()
+        micCheck = t
+    }
+
+    /// 每秒一次（micCtl 上，不經過主執行緒）：
+    ///   系統換了預設麥克風（插拔耳機、在控制中心換）＝重開一條跟過去；
+    ///   這一條幾秒沒送任何一格（裝置被拔、系統音訊服務重啟）＝重開。暫停中照樣會送、只是不寫，不會誤判
+    private func checkMic() {
+        guard !isStopping, !reopenInFlight else { return }
+        let now = Date()
+        let def = AudioDevices.defaultInputID() ?? 0
+        defer { lastDefaultInput = def }
+        guard let m = mic else {
+            if def != lastDefaultInput { reopenMic("default input change") }  // 已經判定中斷：換了麥克風就再試一輪
             return
         }
-        micInterrupted = true
+        if def != 0, def != m.device {
+            reopenMic("default input change")
+            return
+        }
+        let silent = m.silentFor(at: now)
+        if silent > 1 { setMic(0) }  // 沒有新的一格：畫面上的音量不要停在最後那一格
+        let stallAfter = Self.micStallSeconds * pow(2, Double(min(stallReopens, 4)))
+        if silent > stallAfter, now > levelLock.withLock({ _stallCheckAfter }) {
+            stallReopens += 1
+            if stallReopens >= 3 { levelLock.withLock { _micDead = true } }  // 連重開三次都沒聲音：請使用者檢查麥克風
+            reopenMic(String(format: "stalled %.0fs", silent))
+        } else if silent < 1, stallReopens > 0 {
+            stallReopens = 0
+            levelLock.withLock { if _micDead { _micDead = false; _micRecovered = true } }
+        }
+    }
+
+    /// micCtl 上：換掉現在這一條、開一條新的（綁這一刻的預設輸入）。舊的當下就不再寫、在背景關，不等它
+    /// （系統音訊服務卡住時關也會卡，等它＝這幾秒都沒錄到）；開最多等 3 秒，開不起來每秒再試，
+    /// 10 次後判定中斷（畫面提醒；之後換了麥克風會再試）
+    private func reopenMic(_ why: String) {
+        guard !isStopping, !reopenInFlight else { return }
+        reopenInFlight = true
+        levelLock.withLock { _micInterrupted = true }
         HearbyLog.write("rec mic \(why) → dev=\(AudioDevices.defaultInputName() ?? "?")")
-        guard !retryInFlight else { return }
-        retryInFlight = true
-        retapAttempts = 0
-        attemptRetap()
-    }
-
-    private func handleDefaultInputChange() {
-        guard !isStopping, AudioDevices.defaultInputID() != micDeviceID else { return }
-        handleEngineConfigChange("default input change")
-    }
-
-    private func attemptRetap() {
-        guard !isStopping else { retryInFlight = false; return }
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()  // 預設麥克風換了的時候 engine 還在舊裝置上跑，換綁前先停
+        if let old = mic {
+            mic = nil
+            old.abandon()
+        }
         setMic(0)
+        reopenAttempts = 0
+        attemptReopen()
+    }
+
+    private func attemptReopen() {  // micCtl 上
+        guard !isStopping else { reopenInFlight = false; return }
+        let t0 = Date()
         do {
-            try installMicTapAndStart()
-            retryInFlight = false
-            if micDead { micDead = false; micRecovered = true }
+            let m = try openMic()
+            mic = m
+            reopenInFlight = false
+            levelLock.withLock {
+                _micDeviceName = m.deviceName
+                if _micDead, stallReopens == 0 { _micDead = false; _micRecovered = true }
+            }
+            HearbyLog.write(String(format: "rec mic reopened %.2fs", Date().timeIntervalSince(t0)))
         } catch {
-            retapAttempts += 1
-            HearbyLog.write("rec mic retap fail #\(retapAttempts): \(error)")
-            if retapAttempts <= 10 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.attemptRetap() }
+            reopenAttempts += 1
+            HearbyLog.write("rec mic reopen fail #\(reopenAttempts): \(error)")
+            if reopenAttempts <= 10 {
+                micCtl.asyncAfter(deadline: .now() + 1) { [weak self] in self?.attemptReopen() }
             } else {
-                retryInFlight = false
-                micDead = true
+                reopenInFlight = false
+                levelLock.withLock { _micDead = true }
                 HearbyLog.write("rec mic dead after 10 retries: \(error.localizedDescription)")
             }
         }
     }
 
-    /// 麥克風這一軌不經過聲音輸出：AVAudioEngine 預設把「預設輸入＋預設輸出」組成一顆私有聚合裝置一起啟動，
-    /// 預設輸出（例如 DisplayPort 螢幕）的音訊卡住時，啟動要等約 10 秒後回 'stop'，麥克風好好的也錄不到。
-    /// 這一軌用不到輸出，所以把 IO 單元直接綁在這一刻的預設輸入裝置上（系統聲音那一軌是另一條路，不經過這裡）。
-    /// 已經綁在同一顆就不重設。回傳給 log 看的裝置代號；綁不上＝照舊走系統的聚合裝置。
-    private func bindMicToDefaultInput() -> String {
-        guard let dev = AudioDevices.defaultInputID(), let unit = engine.inputNode.audioUnit else {
-            micDeviceID = 0
-            return "default"
+    /// 開發用（命令列 --reopen-mic-at）：裝置沒換也照樣重開一次麥克風，量交界少了多少
+    public func reopenMicForTesting() { micCtl.async { [weak self] in self?.reopenMic("forced") } }
+    /// 開發用（命令列 --stall-mic-at）：現在這一條不再送音，測「幾秒沒收到就重開」
+    public func stallMicForTesting() { micCtl.async { [weak self] in self?.mic?.pauseForTesting() } }
+
+    /// 麥克風收尾（在背景跑，見 stop()）：停掉佇列、關檔
+    private func closeMic() {
+        let m: MicQueue? = micCtl.sync {
+            micCheck?.cancel()
+            micCheck = nil
+            defer { mic = nil }
+            return mic
         }
-        var cur = AudioDeviceID(0)
-        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        if AudioUnitGetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &cur, &size) == noErr, cur == dev {
-            micDeviceID = dev
-            return "\(dev)"
-        }
-        var id = dev
-        let st = AudioUnitSetProperty(
-            unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &id,
-            UInt32(MemoryLayout<AudioDeviceID>.size))
-        micDeviceID = st == noErr ? dev : 0
-        return st == noErr ? "\(dev)" : "default(bind \(st))"
+        m?.stop()
+        micCB.sync { micFile?.close(); micFile = nil }
     }
 
     // MARK: 系統聲：process tap（14.4+）→ SCK 退路
@@ -334,7 +399,7 @@ public final class DualRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
         tapFormat = fmt
         var procID: AudioDeviceIOProcID?
         st = AudioDeviceCreateIOProcIDWithBlock(&procID, agg, sysQueue) { [weak self] _, inData, _, _, _ in
-            guard let self, !self.isStopping, let file = self.sysFile, let fmt = self.tapFormat else { return }
+            guard let self, self.shouldWrite(mic: false), let file = self.sysFile, let fmt = self.tapFormat else { return }
             let abl = UnsafeMutablePointer<AudioBufferList>(mutating: inData)
             guard let buf = AVAudioPCMBuffer(pcmFormat: fmt, bufferListNoCopy: abl) else { return }
             self.sysBufferCount &+= 1
@@ -393,7 +458,7 @@ public final class DualRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 
     public func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .audio, !isStopping, sampleBuffer.isValid, let file = sysFile else { return }
+        guard type == .audio, shouldWrite(mic: false), sampleBuffer.isValid, let file = sysFile else { return }
         sysBufferCount &+= 1
         try? sampleBuffer.withAudioBufferList(body: { abl, _ in
             guard let absd = sampleBuffer.formatDescription?.audioStreamBasicDescription,
@@ -410,21 +475,32 @@ public final class DualRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
         sysStopError = error.localizedDescription
     }
 
-    /// 停止並 finalize；回傳實錄秒數（已扣除睡眠時間）
+    /// 停止並 finalize；回傳實錄秒數（扣掉睡眠與暫停；算到按下停止那一刻，不含收尾的幾秒）
     public func stop() -> TimeInterval {
-        levelLock.withLock { _stopping = true }
-        levelLock.withLock {
-            if let b = sleepBegan { _sleepSeconds += Date().timeIntervalSince(b); sleepBegan = nil }
+        let now = Date()
+        levelLock.withLock { _stopping = true; clock.close(at: now) }
+        // 兩軌的收尾都會進系統音訊服務（關麥克風佇列；關 tap、聚合裝置、輸出保活），輸出裝置或音訊服務卡住時也會卡。
+        // 一起丟到背景，主執行緒合計最多等 stopTimeout 秒。寫入在 _stopping 那一刻就停了；
+        // 逾時的那一軌另外排一個關檔（跟寫入同一條佇列，不會撞），音檔照樣完整，背景那一段之後自己收完
+        let deadline = DispatchTime.now() + Self.stopTimeout
+        let micDone = DispatchGroup(), sysDone = DispatchGroup()
+        DispatchQueue.global(qos: .userInitiated).async(group: micDone) { [self] in closeMic() }
+        DispatchQueue.global(qos: .userInitiated).async(group: sysDone) { [self] in closeSystem() }
+        if micDone.wait(timeout: deadline) == .timedOut {
+            HearbyLog.write("rec mic stop timeout \(Int(Self.stopTimeout))s")
+            micCB.async { [self] in micFile?.close(); micFile = nil }
         }
-        if let o = configObserver { NotificationCenter.default.removeObserver(o); configObserver = nil }
-        if let l = defaultInputListener {
-            var addr = AudioDevices.defaultInputAddress
-            AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &addr, .main, l)
-            defaultInputListener = nil
+        if sysDone.wait(timeout: deadline) == .timedOut {
+            HearbyLog.write("sysaudio stop timeout \(Int(Self.stopTimeout))s")
+            sysQueue.async { [self] in sysFile?.close(); sysFile = nil }
         }
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
         setMic(0); setSys(0)
+        return levelLock.withLock { clock.recorded(at: now) }
+    }
+
+    /// 系統聲收尾（在背景跑，見 stop()）：以下幾行跟以前在 stop() 裡的一字不差，只是不在主執行緒上做
+    private func closeSystem() {
+        TestHook.delay("HEARBY_TEST_SYS_STOP_DELAY")
         if let s = stream {
             let sem = DispatchSemaphore(value: 0)
             s.stopCapture { _ in sem.signal() }
@@ -445,8 +521,6 @@ public final class DualRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
             AudioDeviceDestroyIOProcID(keepAliveDevice, pid)
             keepAliveProcID = nil
         }
-        micFile?.close(); micFile = nil
         sysQueue.sync { self.sysFile?.close(); self.sysFile = nil }
-        return max(0, Date().timeIntervalSince(startedAt) - sleepSeconds)
     }
 }

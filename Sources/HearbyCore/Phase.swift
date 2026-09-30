@@ -71,6 +71,6 @@ public enum RecordScene: String, CaseIterable {
 }
 
 public enum HearbyVersion {
-    public static let version = "2.0.1"
-    public static let build = "19"
+    public static let version = "2.1.0"
+    public static let build = "23"
 }

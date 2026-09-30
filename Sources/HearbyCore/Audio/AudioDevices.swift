@@ -1,4 +1,4 @@
-// AudioDevices — 預設輸入／輸出裝置：代號（錄音器綁 IO 單元、跑輸出保活）與名字（診斷用：hearby.log 記「錄到的是哪支麥」——遠端排錯第一題）
+// AudioDevices — 預設輸入／輸出裝置：代號與 UID（麥克風佇列綁裝置、跑輸出保活）與名字（診斷用：hearby.log 記「錄到的是哪支麥」——遠端排錯第一題）
 import CoreAudio
 import Foundation
 
@@ -22,6 +22,19 @@ public enum AudioDevices {
         guard AudioObjectGetPropertyData(deviceID, &nAddr, 0, nil, &nSize, &name) == noErr
         else { return nil }
         return name as String
+    }
+
+    /// 裝置的 UID（AudioQueue 綁裝置用 UID，不用代號）
+    public static func uid(_ deviceID: AudioDeviceID) -> String? {
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceUID,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        var uid: Unmanaged<CFString>?  // 拿到的是 +1 的 CFString，要自己放掉
+        var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        guard AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, &uid) == noErr, let uid
+        else { return nil }
+        return uid.takeRetainedValue() as String
     }
 
     private static func systemDevice(_ selector: AudioObjectPropertySelector) -> AudioDeviceID? {

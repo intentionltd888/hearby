@@ -96,6 +96,10 @@ public enum Doctor {
     static func provider(deep: Bool) -> DoctorItem {
         let p = Providers.current()
         if p.id == "none" { return DoctorItem("整理方式", .ok, "只要逐字稿（不用帳號）") }
+        if p.id == "endpoint", !deep {
+            if let bad = LocalEndpoint.urlProblem(LocalEndpoint.baseURLString) { return DoctorItem("整理方式", .missing, "\(p.displayName)：\(bad)") }
+            return DoctorItem("整理方式", .ok, "\(p.displayName)（\(LocalEndpoint.baseURLString)，模型 \(LocalEndpoint.model ?? "還沒選")）；連不連得上加 --deep 才查")
+        }
         if !deep {
             let bin = p.id == "claude" ? ClaudeCLI.binaryPath() : CodexCLI.binaryPath()
             guard let b = bin else { return DoctorItem("整理方式", .missing, "\(p.displayName)：還沒裝——設定頁那列按「安裝」") }

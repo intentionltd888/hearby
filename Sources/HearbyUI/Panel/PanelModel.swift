@@ -10,6 +10,12 @@ public final class PanelModel: ObservableObject {
     @Published public var online: Bool = false
     @Published public var brief: String = ""
     @Published public var elapsedText = "00:00"
+    /// 錄音中途暫停（phase 仍是 recording）
+    @Published public var paused = false
+    /// 這一次暫停了多久（暫停中才有）
+    @Published public var pausedText = ""
+    /// 正在用的麥克風名稱
+    @Published public var micName = ""
     @Published public var micHistory: [Float] = []
     @Published public var sysHistory: [Float] = []
     @Published public var sysActive = false
@@ -32,6 +38,10 @@ public final class PanelModel: ObservableObject {
 
     public var onStart: () -> Void = {}
     public var onStop: () -> Void = {}
+    public var onPause: () -> Void = {}
+    public var onResume: () -> Void = {}
+    /// 浮動小條上點計時＝打開面板
+    public var onExpand: () -> Void = {}
     public var onOpenWindow: () -> Void = {}
     public var onOpenSettings: () -> Void = {}
     public var onDismiss: () -> Void = {}

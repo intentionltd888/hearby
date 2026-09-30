@@ -1,12 +1,13 @@
-// MenuIcon — 選單列圖示四態（程式畫，template）：待命／錄音中（點，會閃）／處理中（空心點）／出事（！）
+// MenuIcon — 選單列圖示五態（程式畫，template）：待命／錄音中（點，會閃）／暫停中（兩條直線，不閃）／處理中（空心點）／出事（！）
 import AppKit
 import HearbyCore
 import HearbyUI
 
 enum MenuIcon {
     static var cache: [String: NSImage] = [:]
-    static func image(for phase: Phase, blink: Bool = false) -> NSImage {
-        let key = "\(phase.rawValue)-\(blink)"
+    static func image(for phase: Phase, blink: Bool = false, paused: Bool = false) -> NSImage {
+        let isPaused = paused && phase == .recording
+        let key = "\(phase.rawValue)-\(blink)-\(isPaused)"
         if let c = cache[key] { return c }
         let mark = Brand.markImage(height: 15)
         let mw = mark.size.width
@@ -15,6 +16,9 @@ enum MenuIcon {
             mark.draw(in: NSRect(x: 0, y: 1.5, width: mw, height: 15))
             NSColor.black.setFill()
             switch phase {
+            case .recording where isPaused:
+                NSBezierPath(rect: NSRect(x: mw + 2, y: 1.5, width: 1.8, height: 6)).fill()
+                NSBezierPath(rect: NSRect(x: mw + 5.2, y: 1.5, width: 1.8, height: 6)).fill()
             case .recording:
                 NSColor.black.withAlphaComponent(blink ? 1 : 0.35).setFill()
                 NSBezierPath(ovalIn: NSRect(x: mw + 2, y: 1.5, width: 5, height: 5)).fill()

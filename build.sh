@@ -45,6 +45,9 @@ cp AGENTS.md "$RES/AGENTS.md"
 # 授權聲明跟著成品走（MIT 要求版權聲明隨每一份拷貝）
 cp LICENSE "$RES/LICENSE"
 cp THIRD-PARTY.md "$RES/THIRD-PARTY.md"
+# 第三方授權全文（FluidAudio 是 Apache-2.0：授權全文要跟著成品走）
+[ -d "$RES/licenses" ] && mv "$RES/licenses" "$(mktemp -d)/superseded-licenses"   # 舊的挪開（不刪），跟上面資源包同一招
+cp -R licenses "$RES/licenses"
 
 echo "── 3/5 App 圖示 ──"
 ICON_SRC="Sources/HearbyUI/Resources/Brand/hearby_appicon_1024.png"

@@ -57,12 +57,15 @@ public final class Pipeline {
             onPartialTranscript?(s.suffix(6).map { "[\(Fmt.ts($0.fromMs))] \($0.text)" }.joined(separator: "\n"))
         }
         var trackErrors: [String] = []
+        // 中途暫停的位置：聽打一定從這裡切開（暫停前後的話不會被併成同一句），逐字稿也在這裡插標記
+        let pauses = meta.pauses ?? []
+        let pauseCuts = PauseSpan.midPauses(pauses, totalSeconds: meta.seconds).map(\.atMs)
         if FileManager.default.fileExists(atPath: micWav.path), meta.micMax >= Self.silence {
-            do { segs += try tr.transcribe(wav: micWav, who: micWho, label: "房間裡（麥克風）", workDir: dir, track: "mic", onPartial: partial) }
+            do { segs += try tr.transcribe(wav: micWav, who: micWho, label: "房間裡（麥克風）", workDir: dir, track: "mic", cuts: pauseCuts, onPartial: partial) }
             catch { trackErrors.append(error.localizedDescription); warnings.append("麥克風軌聽打失敗（\(error.localizedDescription)）") }
         } else { warnings.append("麥克風軌無聲，未聽打") }
         if FileManager.default.fileExists(atPath: sysWav.path), meta.sysMax >= Self.silence {
-            do { segs += try tr.transcribe(wav: sysWav, who: "遠端", label: "電腦裡（系統聲音）", workDir: dir, track: "sys", onPartial: partial) }
+            do { segs += try tr.transcribe(wav: sysWav, who: "遠端", label: "電腦裡（系統聲音）", workDir: dir, track: "sys", cuts: pauseCuts, onPartial: partial) }
             catch { trackErrors.append(error.localizedDescription); warnings.append("系統聲音軌聽打失敗（\(error.localizedDescription)）") }
         } else if meta.sysMax < Self.silence, FileManager.default.fileExists(atPath: sysWav.path) {
             warnings.append("系統聲音軌全程無聲（會議可能沒有遠端聲音）")
@@ -114,10 +117,12 @@ public final class Pipeline {
         segs.sort { $0.fromMs < $1.fromMs }
         if scenario == .onlineHeadphones, !segs.contains(where: { $0.who == "遠端" }) { scenario = nil }
         let onsiteFallback = scenario == nil && !segs.contains { $0.who == "遠端" }
-        let transcript = segs.map { s -> String in
+        let lines = segs.map { s -> (fromMs: Int, text: String) in
             let who = (onsiteFallback && s.who == "我方") ? "現場" : s.who
-            return "- [\(Fmt.ts(s.fromMs))][\(who)] \(s.text)"
-        }.joined(separator: "\n")
+            return (s.fromMs, "- [\(Fmt.ts(s.fromMs))][\(who)] \(s.text)")
+        }
+        // 中途暫停過：在暫停的位置插一行標記（時間戳是錄到的時間，暫停那段不在音檔裡）
+        let transcript = PauseSpan.weave(lines, pauses: pauses, totalSeconds: meta.seconds).joined(separator: "\n")
         try? transcript.write(to: dir.appendingPathComponent("transcript.md"), atomically: true, encoding: .utf8)
         meta.scenario = scenario?.rawValue
 
@@ -136,6 +141,9 @@ public final class Pipeline {
         }
         let meetingDir = Paths.meetings.appendingPathComponent(name, isDirectory: true)
         try FileManager.default.createDirectory(at: meetingDir, withIntermediateDirectories: true)
+        // 逐字稿版先落檔之後這一場就出現在清單上；整理完才寫最終版：這段時間不能改標題
+        MeetingBusy.begin(meetingDir)
+        defer { MeetingBusy.end(meetingDir) }
         let mdURL = meetingDir.appendingPathComponent(name + ".md")
         let m4aDest = meetingDir.appendingPathComponent(name + ".m4a")
         Self.saveMeta(meta, to: dir)
@@ -145,6 +153,7 @@ public final class Pipeline {
         var input = Polish.Input(transcript: Transcriber.mergedForLLM(transcript), title: meta.title, attendees: attendeeNames, dateStr: dateStr, durStr: durStr, warnings: warnings, audioLine: dir.path)
         input.onsite = onsiteFallback; input.scenario = scenario; input.onsiteCount = meta.onsiteCount; input.brief = meta.brief ?? []
         input.scene = RecordScene(rawValue: meta.scene ?? "meeting") ?? .meeting
+        input.pauseNote = PauseSpan.note(pauses, totalSeconds: meta.seconds)
         let (interim0, _, _) = Polish.buildNotes(input, provider: nil)
         let interim = Clean.toTraditional(interim0.replacingOccurrences(
             of: "（只有逐字稿：這場沒有接 AI 整理。逐字稿完整保留於下；到設定選「用我的訂閱」後，可用「重新整理全篇」補整理）",
@@ -163,9 +172,16 @@ public final class Pipeline {
         stage(provider.id == "none" ? "整理逐字稿…" : (meta.scene == "note" ? "AI 整理成筆記…" : meta.scene == "interview" ? "AI 整理成訪談稿…" : "AI 整理中…（判斷與會者、整理摘要與待辦）"))
         input.warnings = warnings
         input.audioLine = m4aOK ? m4aDest.path : dir.path
+        input.context = PolishContext.load(excluding: name)   // 記憶裡有名冊才帶（沒有＝跟以前一樣）
+        // 認聲音（實驗；macOS 15 以上、設定打開才跑）：這場有哪些聲音、認得的是誰；出錯只記 log，不擋整理
+        // 分軌（mic.wav、system.wav）分開切；沒有分軌才用混好的 m4a
+        var voiceSources = Voices.sources(workDir: dir)
+        if voiceSources.isEmpty, m4aOK { voiceSources = [Voices.Source(url: m4aDest, track: "mix")] }
+        if let v = Voices.recognize(sources: voiceSources, transcript: input.transcript, onStage: onStage) { input.voiceTags = v.tags; input.voiceLine = v.line }
         let (md0, summary0, polishErr) = Polish.buildNotes(input, provider: provider)
-        let md = Clean.toTraditional(md0)
-        let summary = Clean.toTraditional(summary0)
+        let keep = input.context?.names ?? []   // 名冊上的名字不簡轉繁（「涂」不是「塗」）
+        let md = Clean.toTraditional(md0, keep: keep)
+        let summary = Clean.toTraditional(summary0, keep: keep)
         meta.provider = provider.id
         Self.saveMeta(meta, to: dir)
 
@@ -176,7 +192,7 @@ public final class Pipeline {
         Self.saveMeta(meta, to: meetingDir)
         try? Mirror.copy(mdURL)
         EntryFiles.ensure()
-        do { try MemoryStore.appendMeeting(mdURL: mdURL) } catch { HearbyLog.write("memory append fail: \(error)") }
+        do { try MemoryStore.sync(mdURL: mdURL) } catch { HearbyLog.write("memory sync fail: \(error)") }
         if ConfigStore.shared.current.autoPDF { NotificationCenter.default.post(name: .hearbyWantsPDF, object: mdURL) }
         HearbyLog.write("pipeline done → \(mdURL.lastPathComponent) err=\(polishErr ?? "-")")
         return Output(mdURL: mdURL, meetingDir: meetingDir, summary: summary, polishErr: polishErr)

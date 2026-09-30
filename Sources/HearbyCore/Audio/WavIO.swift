@@ -26,6 +26,14 @@ public func rmsLevel(_ buf: AVAudioPCMBuffer) -> Float {
     return min(1.0, sqrt(sum / Float(buf.frameLength)) * 4)
 }
 
+/// 同一個尺度給 s16（麥克風那一軌）：÷32768、RMS×4、封頂 1（跟 WavIO.blockLevels 一樣）
+public func rmsLevel(_ pcm: UnsafeBufferPointer<Int16>) -> Float {
+    guard !pcm.isEmpty else { return 0 }
+    var sum: Float = 0
+    for v in pcm { let f = Float(v) / 32768; sum += f * f }
+    return min(1.0, sqrt(sum / Float(pcm.count)) * 4)
+}
+
 public enum WavIO {
     public static let sampleRate = 16000
     public static let bytesPerSecond = 32000  // 16 kHz × mono × s16
@@ -173,6 +181,18 @@ public final class CrashSafeWavWriter {
         var pcm = [Int16](repeating: 0, count: n)
         for i in 0..<n { pcm[i] = Int16(max(-1, min(1, ch[i])) * 32767) }
         let data = pcm.withUnsafeBufferPointer { Data(buffer: $0) }
+        do { try fh.write(contentsOf: data) } catch { return false }
+        dataBytes += UInt64(data.count)
+        sinceHeader += UInt64(data.count)
+        if sinceHeader >= headerEvery { sinceHeader = 0; patchHeader() }
+        return true
+    }
+
+    /// 麥克風那一軌：AudioQueue 直接給 16 kHz 單聲道 s16，原樣寫（不經過浮點）
+    @discardableResult
+    public func write(samples: UnsafeBufferPointer<Int16>) -> Bool {
+        guard let base = samples.baseAddress, !samples.isEmpty else { return true }
+        let data = Data(bytes: base, count: samples.count * 2)
         do { try fh.write(contentsOf: data) } catch { return false }
         dataBytes += UInt64(data.count)
         sinceHeader += UInt64(data.count)

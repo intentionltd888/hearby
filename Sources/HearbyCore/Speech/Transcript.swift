@@ -25,6 +25,7 @@ public struct MeetingMeta: Codable, Equatable {
     public var provider: String? = nil     // 整理用的 provider id
     public var outName: String? = nil      // 定案的紀錄檔名（續跑沿用）
     public var versions: [String]? = nil   // 重整理的版本紀錄
+    public var pauses: [PauseSpan]? = nil  // 錄音中途的暫停（位置＝錄到的秒數；按下與繼續當下就存，當機也不丟）
     public init() {}
 }
 
@@ -137,8 +138,27 @@ public final class Transcriber {
         return min(quietGainMax, 0.7 * 32767 / Float(maxAbs))
     }
 
-    /// 規劃切點：短檔不切；切點取「目標點 ±30 秒」內最安靜的 0.5 秒中心
-    public static func planSlices(wav: URL, totalMs: Int, targetMs: Int = sliceTargetMs) -> [(Int, Int)] {
+    /// 規劃切點：短檔不切；切點取「目標點 ±30 秒」內最安靜的 0.5 秒中心。
+    /// forcedCuts＝一定要切的位置（中途暫停的地方）：暫停前後在音檔裡是直接接著的，不切的話 whisper 會把兩邊的話併成同一句，
+    /// 暫停標記就放不到對的位置。切出來的兩邊都要至少 2 秒，太短就不切。
+    public static func planSlices(wav: URL, totalMs: Int, targetMs: Int = sliceTargetMs, forcedCuts: [Int] = []) -> [(Int, Int)] {
+        split(silenceSlices(wav: wav, totalMs: totalMs, targetMs: targetMs), at: forcedCuts)
+    }
+
+    static func split(_ slices: [(Int, Int)], at cuts: [Int], minMs: Int = 2000) -> [(Int, Int)] {
+        guard !cuts.isEmpty else { return slices }
+        var out: [(Int, Int)] = []
+        for (a, b) in slices {
+            var start = a
+            for c in cuts.sorted() where c - start >= minMs && b - c >= minMs {
+                out.append((start, c)); start = c
+            }
+            out.append((start, b))
+        }
+        return out
+    }
+
+    static func silenceSlices(wav: URL, totalMs: Int, targetMs: Int) -> [(Int, Int)] {
         if totalMs <= targetMs * 135 / 100 { return [(0, totalMs)] }
         var cuts: [Int] = [0]
         var mark = targetMs
@@ -291,7 +311,8 @@ public final class Transcriber {
     }
 
     /// 轉寫一軌。空檔／讀不到＝回空陣列＋備註，不 throw。
-    public func transcribe(wav: URL, who: String, label: String, workDir: URL, track: String, onPartial: (([Segment]) -> Void)? = nil) throws -> [Segment] {
+    /// cuts＝一定要切開的位置（毫秒；中途暫停的地方），見 planSlices
+    public func transcribe(wav: URL, who: String, label: String, workDir: URL, track: String, cuts: [Int] = [], onPartial: (([Segment]) -> Void)? = nil) throws -> [Segment] {
         guard let cli = WhisperEngine.cliPath() else { throw HearbyError("找不到 whisper-cli（app 內應自帶；開發機請跑 scripts/vendor-fetch.sh）") }
         guard let modelURL = SharedPaths.installedModel() else { throw HearbyError("找不到聽打模型（\(SharedPaths.whisperModelFile)）") }
         let model = modelURL.path
@@ -302,7 +323,7 @@ public final class Transcriber {
         HearbyLog.write("transcribe start \(track) \(totalMs / 60000)min")
         let env = WhisperEngine.env(forCLI: cli)
         let target = usedMetal == false ? 5 * 60_000 : Self.sliceTargetMs
-        let slices = Self.planSlices(wav: wav, totalMs: totalMs, targetMs: target)
+        let slices = Self.planSlices(wav: wav, totalMs: totalMs, targetMs: target, forcedCuts: cuts)
         let sliceDir = workDir.appendingPathComponent("slices")
         try? FileManager.default.createDirectory(at: sliceDir, withIntermediateDirectories: true)
         var segs: [Segment] = []
@@ -318,7 +339,8 @@ public final class Transcriber {
         let partial = workDir.appendingPathComponent("transcript.partial-\(track).md")
 
         for (i, (a, b)) in slices.enumerated() {
-            let name = String(format: "%@-w%02d", track, i)
+            // 有暫停切點時片名帶起點秒數：切法不同的舊 JSON（續跑用的快取）不會被誤拿來用
+            let name = String(format: "%@-w%02d", track, i) + (cuts.isEmpty ? "" : "-\(a / 1000)s")
             let jsonURL = workDir.appendingPathComponent(name + ".json")
             let speed = (ranMs > 0 && ranSecs > 0) ? Double(ranMs) / ranSecs : (usedMetal == false ? 700.0 : 15000.0)
             let remainMs = slices[i...].reduce(0) { $0 + ($1.1 - $1.0) }
@@ -461,21 +483,23 @@ public final class Transcriber {
 
     /// 逐字稿餵模型前的分塊合併：連續同講者行併到 ~220 字/塊
     public static func mergedForLLM(_ transcript: String) -> String {
-        struct Chunk { let ts: String; let who: String; var text: String }
+        struct Chunk { let ts: String; let who: String; var text: String; var marker = false }
         var chunks: [Chunk] = []
         for line in transcript.components(separatedBy: "\n") {
             let l = line.trimmingCharacters(in: .whitespaces)
+            // 暫停標記原樣留在原位（不併進前後的發言）：模型要知道那裡斷過，重新整理全篇後紀錄上也還看得到
+            if PauseSpan.isMarker(l) { chunks.append(Chunk(ts: "", who: "", text: l, marker: true)); continue }
             guard l.hasPrefix("- ["), let tsEnd = l.range(of: "]["), let whoEnd = l.range(of: "] ", range: tsEnd.upperBound..<l.endIndex) else { continue }
             let ts = String(l[l.index(l.startIndex, offsetBy: 3)..<tsEnd.lowerBound])
             let who = String(l[tsEnd.upperBound..<whoEnd.lowerBound])
             let text = String(l[whoEnd.upperBound...]).trimmingCharacters(in: .whitespaces)
             guard !text.isEmpty else { continue }
-            if var last = chunks.last, last.who == who, last.text.count + text.count <= 220 {
+            if var last = chunks.last, !last.marker, last.who == who, last.text.count + text.count <= 220 {
                 last.text += " " + text
                 chunks[chunks.count - 1] = last
             } else { chunks.append(Chunk(ts: ts, who: who, text: text)) }
         }
-        guard !chunks.isEmpty else { return transcript }
-        return chunks.map { "- [\($0.ts)][\($0.who)] \($0.text)" }.joined(separator: "\n")
+        guard chunks.contains(where: { !$0.marker }) else { return transcript }
+        return chunks.map { $0.marker ? $0.text : "- [\($0.ts)][\($0.who)] \($0.text)" }.joined(separator: "\n")
     }
 }

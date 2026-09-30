@@ -41,6 +41,8 @@ static class Exporters
     /// so an Edge that is already open is not disturbed). Returns the PDF's path.
     public static string Pdf(string mdPath, DocHeader? header = null)
     {
+        // Edge takes a few seconds and the PDF is written at the end: no renaming this meeting meanwhile
+        using var busy = MeetingBusy.Scope(Path.GetDirectoryName(mdPath)!);
         string raw;
         try { raw = RecordMD.Read(mdPath); } catch { throw new HearbyError($"讀不到 {Path.GetFileName(mdPath)}"); }
         var edge = EdgePath() ?? throw new HearbyError("這台電腦找不到 Microsoft Edge，PDF 出不來：改用「存成 Word」，在 Word 裡另存成 PDF");

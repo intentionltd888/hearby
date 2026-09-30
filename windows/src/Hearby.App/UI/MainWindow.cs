@@ -78,11 +78,16 @@ public sealed class RecordsView : ContentControl
     string query = "";
     List<(MeetingItem Item, string Line)> hits = [];
     MeetingItem? selected;
+    // rename: the meeting being renamed, the text typed so far, renaming in progress, the one line after it
+    MeetingItem? renaming;
+    string renameDraft = "", renameMsg = "";
+    bool renameBusy;
     readonly DispatcherTimer tick = new() { Interval = TimeSpan.FromSeconds(5) };
 
     public RecordsView()
     {
-        tick.Tick += (_, _) => { if (selected == null && IsVisible) Reload(); };
+        // no rescans while a title is being edited: the list is sorted by modification time and the row would jump away
+        tick.Tick += (_, _) => { if (selected == null && renaming == null && IsVisible) Reload(); };
         Theme.Changed += Build;
         Loaded += (_, _) => tick.Start();
         Unloaded += (_, _) => tick.Stop();
@@ -98,7 +103,7 @@ public sealed class RecordsView : ContentControl
             {
                 bool same = list.Count == items.Count && list.Zip(items).All(p => p.First.Dir == p.Second.Dir && p.First.Modified == p.Second.Modified);
                 items = list;
-                if (!same && selected == null) Build();
+                if (!same && selected == null && renaming == null) Build();
             });
         });
         if (Content == null) Build();
@@ -126,6 +131,13 @@ public sealed class RecordsView : ContentControl
         bar.Children.Add(field);
         DockPanel.SetDock(bar, Dock.Top);
         p.Children.Add(bar);
+        if (renameMsg.Length > 0)
+        {
+            var note = Neu.Note(renameMsg);
+            note.Margin = new Thickness(0, 0, 0, Neu.SM);
+            DockPanel.SetDock(note, Dock.Top);
+            p.Children.Add(note);
+        }
         if (query.Length > 0 && hits.Count > 0)
         {
             var list = new StackPanel();
@@ -160,6 +172,7 @@ public sealed class RecordsView : ContentControl
             var list = new StackPanel { Margin = new Thickness(0, 2, 0, 2) };
             foreach (var it in items)
             {
+                if (renaming != null && renaming.Dir == it.Dir) { list.Children.Add(RenameRow(it)); continue; }
                 var row = new DockPanel { LastChildFill = true };
                 var chev = Neu.Icon(Neu.IcNext, 11, Theme.InkSoft);
                 DockPanel.SetDock(chev, Dock.Right);
@@ -174,11 +187,111 @@ public sealed class RecordsView : ContentControl
                 System.Windows.Automation.AutomationProperties.SetName(b, it.Title);
                 var item = it;
                 b.Click += (_, _) => { selected = item; Build(); };
-                list.Children.Add(b);
+                // rename: a pencil on the right while the mouse is over the row, and the same in the right-click menu
+                var pencil = Neu.IconButton(Neu.IcEdit, () => BeginRename(item), 26, "改標題（資料夾、檔名、記憶裡的這一場會一起改）", name: "改標題");
+                pencil.Visibility = Visibility.Hidden;
+                pencil.HorizontalAlignment = HorizontalAlignment.Right;
+                pencil.VerticalAlignment = VerticalAlignment.Center;
+                pencil.Margin = new Thickness(0, 0, 8 + Neu.MD + 22, Neu.SM);
+                var menu = new ContextMenu();
+                var rename = new MenuItem { Header = "改標題…" };
+                rename.Click += (_, _) => BeginRename(item);
+                var reveal = new MenuItem { Header = "在檔案總管顯示" };
+                reveal.Click += (_, _) => Exporters.Reveal(item.Dir);
+                menu.Items.Add(rename);
+                menu.Items.Add(reveal);
+                b.ContextMenu = menu;
+                var cell = new Grid();
+                cell.Children.Add(b);
+                cell.Children.Add(pencil);
+                cell.MouseEnter += (_, _) => pencil.Visibility = Visibility.Visible;
+                cell.MouseLeave += (_, _) => pencil.Visibility = Visibility.Hidden;
+                list.Children.Add(cell);
             }
             p.Children.Add(Neu.Scroll(list));
         }
         Content = p;
+    }
+
+    /// The row being renamed turns into a text box in place (Enter = done, Esc = cancel)
+    FrameworkElement RenameRow(MeetingItem it)
+    {
+        var s = new StackPanel();
+        var line = new DockPanel { LastChildFill = true };
+        var chips = Neu.Row(Neu.XS, Neu.Chip(renameBusy ? "改名中…" : "改好", () => CommitRename(it), Neu.IcCheck, !renameBusy), Neu.Chip("取消", CancelRename, Neu.IcCancel, !renameBusy));
+        DockPanel.SetDock(chips, Dock.Right);
+        line.Children.Add(chips);
+        var (field, box) = Neu.Field("新的標題", renameDraft, t => renameDraft = t);
+        field.Margin = new Thickness(0, 3, Neu.SM, 0);
+        box.IsEnabled = !renameBusy;
+        box.KeyDown += (_, e) =>
+        {
+            if (e.Key == System.Windows.Input.Key.Enter) { CommitRename(it); e.Handled = true; }
+            else if (e.Key == System.Windows.Input.Key.Escape) { CancelRename(); e.Handled = true; }
+        };
+        box.Loaded += (_, _) => { System.Windows.Input.Keyboard.Focus(box); box.SelectAll(); };
+        line.Children.Add(field);
+        s.Children.Add(line);
+        var date = Neu.Text(string.Join("　", new[] { it.DateText, it.DurText }.Where(x => x.Length > 0)), Neu.TMicro, Theme.InkSoft, wrap: false);
+        date.Margin = new Thickness(Neu.MD, Neu.XS, 0, Neu.XS);
+        s.Children.Add(date);
+        s.Children.Add(Neu.Note("按 Enter 改好、Esc 取消。這一場的資料夾、裡面的檔名、紀錄上的標題、記憶裡的這一場（有設副本資料夾的話連副本）會一起改；日期和時間不變。"));
+        var card = Neu.Inset(s, Neu.RCard, 0.7, new Thickness(Neu.MD));
+        card.Margin = new Thickness(2, 2, 8, Neu.SM + 2);
+        return card;
+    }
+
+    void BeginRename(MeetingItem it)
+    {
+        renaming = it;
+        renameDraft = it.Title;
+        renameMsg = "";
+        Build();
+    }
+
+    void CancelRename()
+    {
+        if (renameBusy) return;
+        renaming = null;
+        renameDraft = "";
+        Build();
+    }
+
+    void CommitRename(MeetingItem it)
+    {
+        if (renameBusy) return;
+        if (MeetingRename.OneLine(renameDraft).Length == 0) { renameMsg = "標題不能是空的"; Build(); return; }
+        renameBusy = true;
+        Build();
+        var title = renameDraft;
+        Task.Run(() =>
+        {
+            try
+            {
+                var r = MeetingRename.Rename(it.Dir, title);
+                Gui.OnUi(() =>
+                {
+                    renameBusy = false;
+                    renaming = null;
+                    renameDraft = "";
+                    renameMsg = r.Unchanged ? "" : Summary(r, it.Title);
+                    AppState.Shared.Renamed(it.Dir, r);
+                    Reload();
+                    Build();
+                });
+            }
+            catch (Exception e) { Gui.OnUi(() => { renameBusy = false; renameMsg = e.Message; Build(); }); }
+        });
+    }
+
+    /// The one line after a rename: what it is called now, whether memory and the mirror followed, what did not work out
+    static string Summary(MeetingRename.Report r, string old)
+    {
+        var s = $"改好了：「{old}」→「{MeetingIndex.Split(r.NewId).Title}」";
+        if (r.Memory.Count > 0) s += "；記憶裡的這一場跟著換了" + (r.Backups.Count == 0 ? "" : "（改之前留了備份）");
+        if (r.Mirror.Count > 0) s += "；副本資料夾也改了";
+        if (r.Warnings.Count > 0) s += "。沒做成的：" + string.Join("；", r.Warnings);
+        return s;
     }
 
     void Search()
@@ -297,6 +410,20 @@ public sealed class MeetingDetail : ContentControl
             flow.Children.Add(Neu.Chip("跟 Claude 討論", () => { if (!Exporters.ContinueWithClaude(item.MdPath!)) { msg = "打不開 Claude：到「設定 → 紀錄要誰寫」確認 Claude Code 裝好、登入了"; Build(); } }, Neu.IcChat));
             top.Children.Add(flow);
             if (editing) top.Children.Add(Neu.Note("正在自己改：下面的字可以直接打、貼上或用語音輸入。改完按「存檔」；要請 AI 改的話先存檔或取消。"));
+            // names the AI was not sure of and did not change (name ledger 「要確認」): answer once, never asked again
+            var ask = item.MdPath is { } askPath && !editing ? NameLedger.Pending(Path.GetFileNameWithoutExtension(askPath)) : [];
+            if (ask.Count > 0)
+            {
+                top.Children.Add(Neu.Note($"這一場有 {ask.Count} 個名字 AI 沒把握、沒有改（紀錄裡標了 [[?]]）。答一次就記住，之後的會議不會再問。"));
+                foreach (var q in ask.Take(8))
+                {
+                    var row = new WrapPanel();
+                    row.Children.Add(Neu.Text($"「{q.Heard}」是「{q.Name}」嗎？", Neu.TBody, Theme.InkStrong));
+                    row.Children.Add(Neu.Chip("是", () => AnswerName(q, true), Neu.IcCheck));
+                    row.Children.Add(Neu.Chip("不是", () => AnswerName(q, false), Neu.IcCancel));
+                    top.Children.Add(row);
+                }
+            }
         }
         if (translations.Count > 0 && item.MdPath is { } orig)
         {
@@ -486,15 +613,37 @@ public sealed class MeetingDetail : ContentControl
         return box;
     }
 
+    /// Answer a 「要確認」 name: into the name ledger (yes = recognise it this way next time; no = do not change it)
+    void AnswerName(NameLedger.Question q, bool yes)
+    {
+        try
+        {
+            NameLedger.Answer(q.Heard, q.Name, yes);
+            msg = yes ? $"記住了：「{q.Heard}」是「{q.Name}」，下一場照這個認" : $"記住了：「{q.Heard}」不是「{q.Name}」，之後不會這樣改";
+        }
+        catch (Exception e) { msg = e.Message; }
+        Build();
+    }
+
     void Save()
     {
         if ((current ?? item.MdPath) is not { } u) return;
         try
         {
             RecordMD.BackupIfExists(u);
+            var before = md;
             RecordMD.Write(u, draft);
             try { Mirror.Copy(u); } catch { }
-            md = draft; editing = false; msg = "已存檔，原版備份成 _舊版";
+            msg = "已存檔，原版備份成 _舊版";
+            // a name changed: into the name ledger (the next meeting gets it right); translations do not count
+            if (MemoryStore.IsMainRecord(u))
+            {
+                var learned = NameLedger.Learn(before, draft, "你在 Hearby 改的", u);
+                if (learned.Count > 0) msg += $"；記住 {learned.Count} 個名字（{string.Join("、", learned.Take(3).Select(e => $"{e.Heard}→{e.Name}"))}{(learned.Count > 3 ? "…" : "")}），下一場自己就對";
+            }
+            // Edited the record by hand (a name, say): memory follows; translations are skipped by Sync itself
+            try { MemoryStore.Sync(u); } catch { }
+            md = draft; editing = false;
         }
         catch (Exception e) { msg = e.Message; }
         Build();

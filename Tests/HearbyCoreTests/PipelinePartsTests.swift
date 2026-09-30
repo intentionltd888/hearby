@@ -243,6 +243,47 @@ final class PipelinePartsTests: XCTestCase {
         XCTAssertEqual(n, 3)
     }
 
+    /// 新裝好的 GLOSSARY.md 表頭寫著「正名 = 別名1, 別名2」：那是寫法說明，不是一組別名
+    func testGlossaryHeaderIsNotAnAlias() throws {
+        try MemoryStore.ensure()
+        XCTAssertTrue(Clean.aliasTable().isEmpty, "\(Clean.aliasTable())")
+        XCTAssertEqual(Clean.applyAliases("別名1 和 別名2 都照原樣").0, "別名1 和 別名2 都照原樣")
+    }
+
+    func testAliasesInsideHTMLCommentsAreIgnored() throws {
+        try MemoryStore.ensure()
+        try """
+        # 人
+
+        <!-- 範例：
+        ## 假人
+        - 別名：假名字、假名二
+        -->
+        ## Kevin
+        - 別名：Kevien <!-- 舊寫法：Kevyn -->
+        """.write(to: Paths.memory.appendingPathComponent("PEOPLE.md"), atomically: true, encoding: .utf8)
+        try """
+        # 專有名詞與別名（正名 = 別名1, 別名2；下一場聽打後自動改正）
+
+        <!-- 單行註解：Pizza = 披薩 -->
+        Hearby = Herbie, 賀比 <!-- Herby 也常見 -->
+        <!-- 不自動改：
+             流星 = 劉興
+        -->
+        ## 也是標題 = 不是別名
+        Talky = Tokey
+        <!-- 沒收尾的註解一路算到檔尾
+        Fully = Fooly
+        """.write(to: Paths.memory.appendingPathComponent("GLOSSARY.md"), atomically: true, encoding: .utf8)
+        XCTAssertEqual(Clean.aliasTable().map { "\($0.alias)→\($0.canonical)" }, ["Kevien→Kevin", "Herbie→Hearby", "賀比→Hearby", "Tokey→Talky"])
+    }
+
+    func testGlossarySavedWithCRLF() throws {
+        try MemoryStore.ensure()
+        try "# 詞\r\nHearby = Herbie\r\nTalky ＝ Tokey\r\n".write(to: Paths.memory.appendingPathComponent("GLOSSARY.md"), atomically: true, encoding: .utf8)
+        XCTAssertEqual(Clean.aliasTable().map { "\($0.alias)→\($0.canonical)" }, ["Herbie→Hearby", "Tokey→Talky"])
+    }
+
     func testMemoryAppendOnceAndOpenItems() throws {
         try ConfigStore.shared.update { $0.memoryEnabled = true }
         let dir = Paths.meetings.appendingPathComponent("2026-09-10_2112_測試")
@@ -263,8 +304,8 @@ final class PipelinePartsTests: XCTestCase {
         ## 逐字稿
         - [00:00][我方] 你好
         """.write(to: md, atomically: true, encoding: .utf8)
-        try MemoryStore.appendMeeting(mdURL: md)
-        try MemoryStore.appendMeeting(mdURL: md)  // 第二次不重寫
+        try MemoryStore.sync(mdURL: md)
+        try MemoryStore.sync(mdURL: md)  // 第二次：紀錄沒變＝什麼都不寫
         let meetings = try String(contentsOf: Paths.memory.appendingPathComponent("MEETINGS.md"), encoding: .utf8)
         XCTAssertEqual(meetings.components(separatedBy: "## 2026-09-10_2112_測試").count, 2, "只寫一次")
         XCTAssertTrue(meetings.contains("- 決議：做 A"))

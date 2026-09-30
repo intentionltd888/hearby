@@ -17,6 +17,19 @@ public static class Clean
     /// Output must never contain simplified characters
     public static string ToTraditional(string s) => s.Length == 0 ? s : Converter.ToTraditional(s);
 
+    /// Simplified → traditional, but names in keep (the roster) stay as written: the surname 涂 is not simplified 塗.
+    /// Names the conversion would change are swapped for private-use characters, converted, swapped back; empty keep = ToTraditional(s)
+    public static string ToTraditional(string s, IReadOnlyCollection<string> keep)
+    {
+        var risky = keep.Where(n => n.Length > 0 && ToTraditional(n) != n).OrderByDescending(Str.Count).Take(6000).ToList();
+        if (risky.Count == 0) return ToTraditional(s);
+        var t = s;
+        for (int i = 0; i < risky.Count; i++) t = t.Rep(risky[i], ((char)(0xE000 + i)).ToString());
+        t = ToTraditional(t);
+        for (int i = 0; i < risky.Count; i++) t = t.Rep(((char)(0xE000 + i)).ToString(), risky[i]);
+        return t;
+    }
+
     static bool IsCJK(string? g) => g != null && Str.FirstScalar(g) is >= 0x4E00 and <= 0x9FFF;
 
     /// Full-width punctuation: only after a CJK character; the period also needs a CJK / space / end after it
@@ -99,6 +112,8 @@ public static class Clean
     }
 
     // ── Alias feedback (PEOPLE.md / GLOSSARY.md aliases, plain string replacement) ──
+    // Text inside HTML comments (<!-- … -->) does not count; neither do GLOSSARY.md's # heading lines
+    // (the header 「正名 = 別名1, 別名2」 explains the format, it is not an alias pair)
 
     public static List<(string Alias, string Canonical)> AliasTable()
     {
@@ -107,7 +122,7 @@ public static class Clean
         if (TryRead(people) is { } s)
         {
             string? current = null;
-            foreach (var raw in Str.Lines(s))
+            foreach (var raw in Str.Lines(StripHTMLComments(s)))
             {
                 var line = Str.TrimWS(raw);
                 if (line.Starts("## ")) { current = Str.TrimWS(line[3..]); continue; }
@@ -122,9 +137,10 @@ public static class Clean
         var gl = Path.Combine(Paths.Memory, "GLOSSARY.md");
         if (TryRead(gl) is { } g)
         {
-            foreach (var raw in Str.Lines(g))
+            foreach (var raw in Str.Lines(StripHTMLComments(g)))
             {
                 var line = Str.TrimWS(raw);
+                if (line.Starts("#")) continue;
                 int eq = line.Find(" = "); int eqLen = 3;
                 if (eq < 0) { eq = line.Find("＝"); eqLen = 1; }
                 if (eq < 0) continue;
@@ -133,10 +149,29 @@ public static class Clean
                 foreach (var a in SplitTerms(line[(eq + eqLen)..])) if (a != canonical && Str.Count(a) >= 2) outList.Add((a, canonical));
             }
         }
+        // the name ledger (NAMES.md): 一律 entries passed the collision check, replaced right after transcription
+        if (TryRead(Path.Combine(Paths.Memory, NameLedger.FileName)) is { } nm) outList.AddRange(NameLedger.AliasPairs(NameLedger.Parse(nm).Entries));
         return outList;
     }
 
     static string? TryRead(string path) { try { return File.Exists(path) ? Str.NormalizeNewlines(ReadUtf8Strict(path)) : null; } catch { return null; } }
+
+    /// Drop HTML comments (<!-- … -->, may span lines; an unclosed one runs to the end). Newlines inside are kept, so other lines keep their place
+    internal static string StripHTMLComments(string s)
+    {
+        s = Str.NormalizeNewlines(s);
+        var sb = new StringBuilder(s.Length);
+        int pos = 0;
+        for (int open; (open = s.Find("<!--", pos)) >= 0;)
+        {
+            sb.Append(s, pos, open - pos);
+            int close = s.Find("-->", open + 4);
+            int end = close < 0 ? s.Length : close;
+            sb.Append('\n', s.AsSpan(open + 4, end - open - 4).Count('\n'));
+            pos = close < 0 ? s.Length : close + 3;
+        }
+        return sb.Append(s, pos, s.Length - pos).ToString();
+    }
 
     /// Apply the alias table (longest alias first, so short ones do not eat long ones)
     public static (string Text, int Count) ApplyAliases(string text, List<(string Alias, string Canonical)>? table = null)

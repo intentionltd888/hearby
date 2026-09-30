@@ -2,9 +2,12 @@
 import AppKit
 import HearbyCore
 import HearbyUI
+import HearbyVoice
 import SwiftUI
 import UserNotifications
 
+// 認聲音的引擎（FluidAudio）；有沒有真的用，看 Voices.enabled（macOS 15 以上＋設定打開）
+Voices.engine = FluidVoiceEngine()
 if let code = Cli.dispatch(CommandLine.arguments) { exit(code) }
 
 @MainActor
@@ -65,6 +68,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let env = ProcessInfo.processInfo.environment
         if let f = env["HEARBY_AUTOIMPORT"], !f.isEmpty {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { AppState.shared.importMedia(URL(fileURLWithPath: f)) }
+        }
+        // HEARBY_UI_SCRIPT="start 3 hide 3 pause 4 resume 3 stop"：照順序對狀態機下指令（跟面板按鈕同一條路），見 UIScript.swift
+        if let s = env["HEARBY_UI_SCRIPT"], !s.isEmpty {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                guard let bar = self?.statusBar else { return }
+                UIScript.run(s, statusBar: bar)
+            }
         }
     }
 

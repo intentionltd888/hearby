@@ -59,6 +59,22 @@ public static class Prompt
 
     public static string SectionEdit(string sectionName, string instruction) => PromptText.SectionEdit(sectionName, instruction);
 
+    /// Extra rules when the polish carries a roster (PolishContext); the roster, decisions and to-dos themselves go in the user message (MemoryBlock)
+    public static string MemoryRules => PromptText.MemoryRules;
+
+    /// The part of the user message before the transcript: roster, already decided, to-dos still open
+    public static string MemoryBlock(PolishContext c, List<SoundAlike.Hit>? sounds = null)
+    {
+        var s = "\n\n名冊（使用者圈子裡的人、案子、公司、產品；用來認名字，不代表這些人在場，也不代表這場談了這些案子）：\n" + c.Roster;
+        var near = SoundAlike.Lines(sounds ?? []);
+        if (near.Count > 0) s += "\n\n唸起來像名冊名字的地方（Hearby 照讀音挑的候選：原字 → 像哪個名字？×次數 [在哪幾行]）：\n" + string.Join("\n", near);
+        if (c.Decided.Count > 0) s += "\n\n已定案（之前的會或討論已經決定的事；【】裡是議題）：\n" + string.Join("\n", c.Decided.Select(x => $"- {x}"));
+        if (c.OpenTodos.Count > 0) s += "\n\n還沒完成的待辦（之前的會開的、還沒打勾；事項｜負責人｜期限｜哪一天的會或哪一案）：\n" + string.Join("\n", c.OpenTodos.Select(x => $"- {x}"));
+        if (c.Projects.Count > 0) s += "\n\n案子現況（開會前記的：案子｜負責｜現況｜下一步｜期限；這場有更新就照這場的寫，不要把會前的現況當成這場講的）：\n" + string.Join("\n", c.Projects.Select(x => $"- {x}"));
+        if (c.Undecided.Count > 0) s += "\n\n還沒定的事（開會前還沒定案；這場定了就寫進「## 決議」，沒講到就不用提）：\n" + string.Join("\n", c.Undecided.Select(x => $"- {x}"));
+        return s;
+    }
+
     /// Extra rules for small local models (Ollama / LM Studio): the same rules, said once more, shorter and blunter
     public static string LocalModelRules => PromptText.LocalModelRules;
 }

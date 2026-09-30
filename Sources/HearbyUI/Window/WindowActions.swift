@@ -7,6 +7,29 @@ public final class WindowNav: ObservableObject {
     public static let shared = WindowNav()
     @Published public var openRecord: URL? = nil
     @Published public var tab: Int? = nil
+    /// 設計檢視（--snapshot）專用：單場頁一打開就擺成指定狀態。一般使用永遠是 nil
+    public var demo: DetailDemo? = nil
+    /// 設計檢視（--snapshot）專用：清單一打開就擺成「滑過某一場」或「正在改某一場的標題」。一般使用永遠是 nil
+    public var listDemo: ListDemo? = nil
+}
+
+/// 清單的展示狀態：滑鼠停在哪一場（出現改標題的筆）、正在改哪一場的標題（打到一半的字）
+public struct ListDemo: Equatable {
+    public var hovered: URL? = nil
+    public var renaming: URL? = nil
+    public var draft = ""
+    public init(hovered: URL? = nil, renaming: URL? = nil, draft: String = "") { self.hovered = hovered; self.renaming = renaming; self.draft = draft }
+}
+
+/// 單場頁的展示狀態：「自己改」或「請 AI 改一段」（含並排預覽）
+public struct DetailDemo: Equatable {
+    public var editing = false
+    public var aiSection: String? = nil
+    public var aiInstruction: String? = nil
+    public var aiPreview: String? = nil
+    public init(editing: Bool = false, aiSection: String? = nil, aiInstruction: String? = nil, aiPreview: String? = nil) {
+        self.editing = editing; self.aiSection = aiSection; self.aiInstruction = aiInstruction; self.aiPreview = aiPreview
+    }
 }
 
 public struct WindowActions {
@@ -20,6 +43,8 @@ public struct WindowActions {
     public var repolish: (URL, String, @escaping (String) -> Void, @escaping (Result<String, Error>) -> Void) -> Void = { _, _, _, _ in }
     public var sectionEdit: (URL, String, String, @escaping (Result<String, Error>) -> Void) -> Void = { _, _, _, _ in }
     public var translate: (URL, String, @escaping (Result<URL, Error>) -> Void) -> Void = { _, _, _ in }
+    /// 改標題：(這一場的資料夾, 新標題, 完成)。資料夾、檔名、紀錄表頭、記憶、副本一起換（MeetingRename）
+    public var renameMeeting: (URL, String, @escaping (Result<MeetingRename.Report, Error>) -> Void) -> Void = { _, _, _ in }
     public var runDoctorDeep: () -> DoctorReport = { Doctor.run(deep: true) }
     public var exportDiagnostics: () -> URL? = { nil }
     public var rerunWizard: () -> Void = {}

@@ -50,6 +50,13 @@ struct RecordsPane: View {
     @State private var hits: [(item: MeetingItem, line: String)] = []
     @State private var selected: MeetingItem? = nil
     private let tick = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
+    // 改標題：滑過哪一場（出現筆）、正在改哪一場、打到一半的字、改名中、改完的一句話
+    @State private var hovered: String? = nil
+    @State private var renaming: MeetingItem? = nil
+    @State private var renameDraft = ""
+    @State private var renameBusy = false
+    @State private var renameMsg = ""
+    @FocusState private var renameFocus: Bool
 
     @ObservedObject private var nav = WindowNav.shared
 
@@ -57,8 +64,9 @@ struct RecordsPane: View {
         Group {
             if let s = selected { MeetingDetail(item: s, actions: actions) { selected = nil; reload() } } else { list }
         }
-        .onAppear { reload(); openPending() }
-        .onReceive(tick) { _ in if selected == nil { reload() } }
+        .onAppear { reload(); openPending(); applyListDemo() }
+        // 正在改標題的時候不重掃：清單照修改時間排，重掃會讓那一列跳走
+        .onReceive(tick) { _ in if selected == nil, renaming == nil { reload() } }
         .onReceive(nav.$openRecord) { _ in openPending() }
     }
     /// 面板「打開這份紀錄」／「上一場」：選中那一場
@@ -80,6 +88,7 @@ struct RecordsPane: View {
                 NeuChip(title: "搜") { hits = MeetingIndex.search(query) }
                 NeuChip(title: "打開資料夾") { actions.revealDir(Paths.meetings) }
             }
+            if !renameMsg.isEmpty { NeuNote(text: renameMsg) }
             if !query.isEmpty, !hits.isEmpty {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 4) {
@@ -105,20 +114,7 @@ struct RecordsPane: View {
                 ScrollView {
                     VStack(spacing: NeuSpace.sm) {
                         ForEach(items) { it in
-                            Button { selected = it } label: {
-                                HStack(alignment: .top, spacing: NeuSpace.md) {
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(it.title).font(NeuFont.ui(NeuType.body, true)).foregroundColor(Neu.inkStrong).lineLimit(1)
-                                        Text([it.dateText, it.durText].filter { !$0.isEmpty }.joined(separator: "　")).font(NeuFont.ui(NeuType.micro)).foregroundColor(Neu.inkSoft)
-                                        if !it.gist.isEmpty { Text(it.gist).font(NeuFont.ui(NeuType.caption)).foregroundColor(Neu.inkMid).lineLimit(1) }
-                                    }
-                                    Spacer()
-                                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .medium)).foregroundColor(Neu.inkSoft)
-                                }
-                                .padding(NeuSpace.md).frame(maxWidth: .infinity, alignment: .leading)
-                                .neuRaised(NeuRadius.card, lift: 0.6)
-                            }
-                            .buttonStyle(.plain)
+                            if renaming?.id == it.id { renameRow(it) } else { row(it) }
                         }
                     }
                     .padding(.vertical, 2)
@@ -126,6 +122,109 @@ struct RecordsPane: View {
             }
         }
     }
+
+    /// 一場一列：點了進單場頁；滑過右邊出現筆（改標題），右鍵也有
+    private func row(_ it: MeetingItem) -> some View {
+        ZStack(alignment: .trailing) {
+            Button { selected = it } label: {
+                HStack(alignment: .top, spacing: NeuSpace.md) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(it.title).font(NeuFont.ui(NeuType.body, true)).foregroundColor(Neu.inkStrong).lineLimit(1)
+                        Text([it.dateText, it.durText].filter { !$0.isEmpty }.joined(separator: "　")).font(NeuFont.ui(NeuType.micro)).foregroundColor(Neu.inkSoft)
+                        if !it.gist.isEmpty { Text(it.gist).font(NeuFont.ui(NeuType.caption)).foregroundColor(Neu.inkMid).lineLimit(1) }
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .medium)).foregroundColor(Neu.inkSoft)
+                }
+                .padding(NeuSpace.md).frame(maxWidth: .infinity, alignment: .leading)
+                .neuRaised(NeuRadius.card, lift: 0.6)
+            }
+            .buttonStyle(.plain)
+            if hovered == it.id {
+                NeuIconButton(systemName: "pencil", size: 26) { beginRename(it) }
+                    .help("改標題（資料夾、檔名、記憶裡的這一場會一起改）")
+                    .padding(.trailing, NeuSpace.md + 20)
+            }
+        }
+        .onHover { inside in if inside { hovered = it.id } else if hovered == it.id { hovered = nil } }
+        .contextMenu {
+            Button("改標題…") { beginRename(it) }
+            Button("在 Finder 裡顯示") { actions.revealDir(it.dir) }
+        }
+    }
+
+    /// 正在改標題的那一列：原地變成輸入框（Enter 改好、Esc 取消）
+    private func renameRow(_ it: MeetingItem) -> some View {
+        VStack(alignment: .leading, spacing: NeuSpace.sm) {
+            HStack(spacing: NeuSpace.sm) {
+                TextField("新的標題", text: $renameDraft)
+                    .textFieldStyle(.plain).font(NeuFont.ui(NeuType.body, true)).foregroundColor(Neu.inkStrong)
+                    .padding(.horizontal, NeuSpace.md).frame(height: 34)
+                    .neuDebossed(NeuRadius.pill, depth: 0.9)
+                    .focused($renameFocus)
+                    .disabled(renameBusy)
+                    .onSubmit { commitRename(it) }
+                    .onExitCommand { cancelRename() }
+                NeuChip(title: renameBusy ? "改名中…" : "改好", systemImage: "checkmark", enabled: !renameBusy) { commitRename(it) }
+                NeuChip(title: "取消", systemImage: "xmark", enabled: !renameBusy) { cancelRename() }
+            }
+            Text([it.dateText, it.durText].filter { !$0.isEmpty }.joined(separator: "　")).font(NeuFont.ui(NeuType.micro)).foregroundColor(Neu.inkSoft)
+                .padding(.leading, NeuSpace.md)
+            NeuNote(text: "按 Enter 改好、Esc 取消。這一場的資料夾、裡面的檔名、紀錄上的標題、記憶裡的這一場（有設副本資料夾的話連副本）會一起改；日期和時間不變。")
+        }
+        .padding(NeuSpace.md).frame(maxWidth: .infinity, alignment: .leading)
+        .neuDebossed(NeuRadius.card, depth: 0.7)
+    }
+
+    private func beginRename(_ it: MeetingItem) {
+        renaming = it
+        renameDraft = it.title
+        renameMsg = ""
+        hovered = nil
+        DispatchQueue.main.async { renameFocus = true }
+    }
+
+    private func cancelRename() {
+        guard !renameBusy else { return }
+        renaming = nil
+        renameDraft = ""
+    }
+
+    private func commitRename(_ it: MeetingItem) {
+        guard !renameBusy else { return }
+        guard !MeetingRename.oneLine(renameDraft).isEmpty else { renameMsg = "標題不能是空的"; return }
+        renameBusy = true
+        actions.renameMeeting(it.dir, renameDraft) { r in
+            renameBusy = false
+            switch r {
+            case .success(let rep):
+                renaming = nil
+                renameDraft = ""
+                renameMsg = rep.unchanged ? "" : Self.summary(rep, from: it.title)
+                reload()
+            case .failure(let e):
+                renameMsg = e.localizedDescription
+            }
+        }
+    }
+
+    /// 改完的一句話：改成什麼、記憶與副本有沒有跟著換、哪裡沒做成
+    static func summary(_ r: MeetingRename.Report, from old: String) -> String {
+        var s = "改好了：「\(old)」→「\(MeetingIndex.split(folderName: r.newID).1)」"
+        if !r.memory.isEmpty { s += "；記憶裡的這一場跟著換了" + (r.backups.isEmpty ? "" : "（改之前留了備份）") }
+        if !r.mirror.isEmpty { s += "；副本資料夾也改了" }
+        if !r.warnings.isEmpty { s += "。沒做成的：" + r.warnings.joined(separator: "；") }
+        return s
+    }
+
+    /// 設計檢視（--snapshot）：擺成滑過某一場、或正在改某一場的標題
+    private func applyListDemo() {
+        guard let d = nav.listDemo else { return }
+        let key = { (u: URL) in u.standardizedFileURL.path }
+        if let h = d.hovered { hovered = items.first { key($0.dir) == key(h) }?.id }
+        if let u = d.renaming, let it = items.first(where: { key($0.dir) == key(u) }) { renaming = it; renameDraft = d.draft.isEmpty ? it.title : d.draft }
+    }
+
     private func reload() { items = MeetingIndex.scan() }
 }
 
@@ -148,8 +247,10 @@ struct MeetingDetail: View {
     @State private var showAI = false
     @State private var showExport = false
     @State private var current: URL? = nil        // 現在看的是哪個檔（原文或翻譯）
+    @State private var askNames: [NameLedger.Question] = []   // 這一場 AI 沒把握、沒改的名字（名字確認帳「要確認」）；答一次就不再問
     @State private var translations: [String] = []  // 已有的翻譯語言
     @State private var showTranslate = false
+    @State private var showVoices = false             // 認聲音（實驗，macOS 15 以上）
     @State private var stage = ""                  // AI 在跑的時候給人看的一行（重新整理要跑一兩分鐘，沒有進度字會以為壞了）
 
     /// 可以請 AI 改的節＝這份紀錄真的有的 `## ` 節（會議／訪談／筆記各不同；逐字稿與機器節不列）
@@ -196,9 +297,27 @@ struct MeetingDetail: View {
                         .help(aiAllowed ? "翻成英文／日文／簡中，另存一份，原文不動" : aiBlockedHelp)
                     NeuChip(title: "存成 PDF／Word", systemImage: "doc.richtext") { showExport = true }
                     NeuChip(title: "跟 Claude 討論", systemImage: "bubble.left.and.text.bubble.right") { if let u = item.mdURL { actions.continueClaude(u) } }
+                    if Voices.supported {
+                        NeuChip(title: "認聲音", systemImage: "person.wave.2") { showVoices.toggle() }
+                            .help("找出這場錄音裡有哪些聲音，幫認識的人取名字（本人同意才記；聲紋只存在這台 Mac）")
+                    }
                 }
                 if editing { NeuNote(text: "正在自己改：下面的字可以直接打、貼上或用語音輸入。改完按「存檔」；要請 AI 改的話先存檔或取消。") }
+                if !askNames.isEmpty, !editing {
+                    VStack(alignment: .leading, spacing: NeuSpace.xs) {
+                        NeuNote(text: "這一場有 \(askNames.count) 個名字 AI 沒把握、沒有改（紀錄裡標了 [[?]]）。答一次就記住，之後的會議不會再問。")
+                        ForEach(askNames.prefix(8), id: \.heard) { q in
+                            HStack(spacing: NeuSpace.sm) {
+                                Text("「\(q.heard)」是「\(q.name)」嗎？").font(NeuFont.ui(NeuType.body)).foregroundColor(Neu.inkStrong)
+                                NeuChip(title: "是", systemImage: "checkmark") { answerName(q, yes: true) }
+                                NeuChip(title: "不是", systemImage: "xmark") { answerName(q, yes: false) }
+                                Spacer(minLength: 0)
+                            }
+                        }
+                    }
+                }
             }
+            if showVoices, let u = item.mdURL { VoicesPanel(mdURL: u) }
             if !translations.isEmpty, let orig = item.mdURL {
                 HStack(spacing: NeuSpace.sm) {
                     Text("看哪一版").font(NeuFont.ui(NeuType.caption, true)).foregroundColor(Neu.inkMid)
@@ -270,7 +389,7 @@ struct MeetingDetail: View {
                     }
                     if let p = aiPreview {
                         HStack(alignment: .top, spacing: NeuSpace.md) {
-                            column("原本", (RecordMD.parse(md: md).section(aiSection) ?? []).joined(separator: "\n"))
+                            column("原本", originalText(aiSection))
                             column("AI 改後", p)
                         }
                     }
@@ -317,6 +436,12 @@ struct MeetingDetail: View {
         }
     }
 
+    /// 並排預覽左邊那欄：這一節現在的內容。待辦解析時不放在一般段落裡（另收在 todos），要自己組回來，不然永遠是空的
+    private func originalText(_ section: String) -> String {
+        let rec = RecordMD.parse(md: md)
+        if section.contains("待辦") { return rec.todos.map { "\($0.item)｜\($0.owner)｜\($0.due)" }.joined(separator: "\n") }
+        return (rec.section(section) ?? []).joined(separator: "\n")
+    }
     private func column(_ title: String, _ text: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title).font(NeuFont.ui(NeuType.micro, true)).foregroundColor(Neu.inkSoft)
@@ -347,16 +472,43 @@ struct MeetingDetail: View {
     private func load() {
         let first = current == nil
         if current == nil { current = item.mdURL; translations = findTranslations() }
+        if let u = item.mdURL { askNames = NameLedger.pending(meeting: u.deletingPathExtension().lastPathComponent) }
         if let u = current, let s = try? String(contentsOf: u, encoding: .utf8) { md = s }
         // 只有逐字稿（沒接 AI 整理）的紀錄：打開直接看逐字稿，不要給人一頁空白
         if first, RecordMD.parse(md: md).sections.allSatisfy({ $0.lines.allSatisfy { $0.hasPrefix("（") || $0 == "---" || $0 == "無" || $0.isEmpty } }) { mode = 1 }
         // 「請 AI 改一段」預設選的節要是這份真的有的（筆記沒有「重點」，之前預設「重點」→ 按確認寫入會說找不到）
         if !sectionNames.contains(aiSection) { aiSection = sectionNames.first ?? aiSection }
+        // 設計檢視（--snapshot）才有：直接擺成「自己改」或「請 AI 改一段＋並排預覽」
+        if first, let d = WindowNav.shared.demo {
+            if d.editing { draft = md; editing = true }
+            if let sec = d.aiSection { aiSection = sec; showAI = true }
+            if let ins = d.aiInstruction { aiInstruction = ins }
+            if let pv = d.aiPreview { aiPreview = pv }
+        }
     }
+    /// 答「要確認」的名字：寫進名字確認帳（是＝下一場照這個認；不是＝不要換）
+    private func answerName(_ q: NameLedger.Question, yes: Bool) {
+        do {
+            try NameLedger.answer(heard: q.heard, name: q.name, yes: yes)
+            askNames.removeAll { $0 == q }
+            msg = yes ? "記住了：「\(q.heard)」是「\(q.name)」，下一場照這個認" : "記住了：「\(q.heard)」不是「\(q.name)」，之後不會這樣改"
+        } catch { msg = error.localizedDescription }
+    }
+
     private func save() {
         guard let u = current ?? item.mdURL else { return }
         RecordMD.backupIfExists(u)
-        do { try draft.write(to: u, atomically: true, encoding: .utf8); try? Mirror.copy(u); md = draft; editing = false; msg = "已存檔，原版備份成 _舊版" } catch { msg = error.localizedDescription }
+        do {
+            let before = md
+            try draft.write(to: u, atomically: true, encoding: .utf8); try? Mirror.copy(u); md = draft; editing = false; msg = "已存檔，原版備份成 _舊版"
+            // 改了名字：記進名字確認帳（下一場自己就對）；翻譯檔不算
+            if MemoryStore.isMainRecord(u) {
+                let learned = NameLedger.learn(old: before, new: draft, who: "你在 Hearby 改的", mdURL: u)
+                if !learned.isEmpty { msg += "；記住 \(learned.count) 個名字（" + learned.prefix(3).map { "\($0.heard)→\($0.name)" }.joined(separator: "、") + (learned.count > 3 ? "…" : "") + "），下一場自己就對" }
+            }
+            // 自己改了紀錄（例如人名）：記憶跟著換；翻譯檔不進記憶（sync 自己會略過）
+            _ = try? MemoryStore.sync(mdURL: u)
+        } catch { msg = error.localizedDescription }
     }
 }
 
@@ -368,6 +520,7 @@ struct SettingsPane: View {
     @State private var provider = ConfigStore.shared.current.provider
     @State private var memory = ConfigStore.shared.current.memoryEnabled
     @State private var autoPDF = ConfigStore.shared.current.autoPDF
+    @State private var floatingBar = ConfigStore.shared.current.floatingBarOn
     @State private var mirror = ConfigStore.shared.current.mirrorDir ?? ""
     @State private var glossary = Clean.localGlossary() ?? ""
     @State private var company = ConfigStore.shared.current.docCompany ?? ""
@@ -385,6 +538,14 @@ struct SettingsPane: View {
                         ForEach(AppearanceMode.allCases, id: \.self) { m in
                             NeuChip(title: m.label + (appearance == m ? " ✓" : "")) { appearance = m; AppearanceMode.set(m) }
                         }
+                    }
+                }
+                section("錄音中", icon: "waveform", tip: "面板收起來的時候，螢幕上方會有一條小狀態列：看得到在錄還是暫停、錄了幾分幾秒、麥克風有沒有收到聲音，也能直接暫停或停止。拖得動，放哪裡它會記住。選單列的 Hearby 圖示旁邊也會顯示計時。") {
+                    HStack(spacing: NeuSpace.sm) {
+                        NeuChip(title: floatingBar ? "螢幕上的小狀態列：開著 ✓" : "螢幕上的小狀態列：關著") {
+                            floatingBar.toggle(); try? ConfigStore.shared.update { $0.floatingBar = floatingBar }
+                        }
+                        NeuNote(text: floatingBar ? "面板收起來就會出現；面板打開就收掉" : "只看選單列圖示旁邊的計時")
                     }
                 }
                 section("紀錄存在哪", icon: "folder", tip: "每一場的錄音、逐字稿、紀錄、匯出的文件，都在這個資料夾裡，一場一個子資料夾。副本資料夾＝每份紀錄再多存一份到你指定的地方（例如 iCloud 或 Dropbox 同步夾，或給你的 AI 助理讀的資料夾）。") {
@@ -423,6 +584,9 @@ struct SettingsPane: View {
                         NeuNote(text: memory ? "開完會會自動記；上次沒做完的事會出現在開錄前" : "現在不記；紀錄照樣存")
                     }
                 }
+                section("認聲音（實驗）", icon: "person.wave.2", tip: "整理前先分出錄音裡誰在講話；記住過的人（要本人同意）會標出名字，紀錄的摘要、與會者、誰說了什麼就寫對人。聲紋只存在這台 Mac 的 Hearby 資料夾，不進紀錄、不上傳；隨時可以忘記。要 macOS 15 以上。") {
+                    VoicesSettings()
+                }
                 section("其他", icon: "ellipsis.circle", tip: "怪怪的時候：先到「檢查」看哪一項不對；還是不行就匯出診斷檔，把桌面那個 txt 傳給我們。") {
                     HStack(spacing: NeuSpace.sm) {
                         NeuChip(title: "重新跑一次設定精靈", systemImage: "sparkles") { actions.rerunWizard() }
@@ -459,6 +623,9 @@ struct SettingsPane: View {
 public struct ProvidersPane: View {
     @Binding var selected: String
     var compact = false
+    /// 精靈只放三排（兩種訂閱＋只要逐字稿）；本機模型是延伸選項，只在設定頁出現
+    var showEndpoint = true
+    @State private var refreshing = false
     @ObservedObject private var cInstall = ClaudeInstall.shared
     @ObservedObject private var cLogin = ClaudeLogin.shared
     @ObservedObject private var xInstall = CodexInstall.shared
@@ -467,12 +634,18 @@ public struct ProvidersPane: View {
     @State private var code = ""
     private let tick = Timer.publish(every: 3, on: .main, in: .common).autoconnect()
 
-    public init(selected: Binding<String>, compact: Bool = false) { self._selected = selected; self.compact = compact }
+    public init(selected: Binding<String>, compact: Bool = false, showEndpoint: Bool = true) {
+        self._selected = selected; self.compact = compact; self.showEndpoint = showEndpoint
+    }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: NeuSpace.sm) {
             row("claude", title: "交給我的 Claude 整理", sub: "要有 Claude 的付費帳號（Pro 或 Max）。按下去會幫你裝好、開瀏覽器登入。")
             row("codex", title: "交給我的 ChatGPT 整理", sub: "要有 ChatGPT 的付費帳號（Plus 或 Pro）。按下去會幫你裝好、開瀏覽器登入。")
+            if showEndpoint {
+                row("endpoint", title: "交給本機模型整理（Ollama／LM Studio）", sub: "不用帳號、內容不離開這台電腦：用你自己裝的模型，建議 16 GB 以上記憶體。整理得比 Claude／ChatGPT 簡略，決議與待辦請自己再看一次。")
+                if selected == "endpoint" { EndpointForm(onSaved: refresh) }
+            }
             row("none", title: "先只要逐字稿", sub: "不用任何帳號。有誰講了什麼、幾分幾秒；之後想改隨時可以。")
             flowLine
         }
@@ -569,12 +742,87 @@ public struct ProvidersPane: View {
         }
     }
     private func refresh() {
+        // 每 3 秒一輪；上一輪還沒查完（本機模型要連網路問）就不疊上去。本機模型沒選就不去連
+        guard !refreshing else { return }
+        refreshing = true
+        let wantEndpoint = showEndpoint && selected == "endpoint"
         DispatchQueue.global(qos: .userInitiated).async {
             var s: [String: ProviderStatus] = [:]
-            for p in Providers.all { s[p.id] = p.check() }
+            for p in Providers.all where p.id != "endpoint" || wantEndpoint { s[p.id] = p.check() }
+            if s["endpoint"] == nil { s["endpoint"] = ProviderStatus(.pending, "點一下設定位址與模型") }
             let cur = ConfigStore.shared.current.provider
-            DispatchQueue.main.async { status = s; if selected != cur { selected = cur } }
+            DispatchQueue.main.async { status = s; refreshing = false; if selected != cur { selected = cur } }
         }
+    }
+}
+
+/// 本機模型：位址＋從端點讀到的模型清單＋存。還沒裝的人給一句怎麼裝
+struct EndpointForm: View {
+    var onSaved: () -> Void
+    @State private var url = ConfigStore.shared.current.endpointURL ?? LocalEndpoint.defaultURL
+    @State private var model = ConfigStore.shared.current.endpointModel ?? ""
+    @State private var models: [String] = []
+    @State private var msg = ""
+    @State private var loading = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: NeuSpace.sm) {
+            HStack(spacing: NeuSpace.sm) {
+                TextField("位址（Ollama：http://127.0.0.1:11434；LM Studio：http://127.0.0.1:1234）", text: $url)
+                    .textFieldStyle(.plain).font(NeuFont.ui(NeuType.body)).foregroundColor(Neu.inkStrong)
+                    .padding(.horizontal, NeuSpace.md).frame(height: 34).neuDebossed(NeuRadius.pill, depth: 0.9)
+                NeuChip(title: loading ? "讀取中…" : "讀取模型", systemImage: "arrow.clockwise", enabled: !loading) { load() }
+            }
+            HStack(spacing: NeuSpace.sm) {
+                Menu {
+                    ForEach(models, id: \.self) { m in Button(m) { model = m } }
+                } label: {
+                    Text(model.isEmpty ? (models.isEmpty ? "先按「讀取模型」" : "選一個模型") : model)
+                        .font(NeuFont.ui(NeuType.body)).foregroundColor(model.isEmpty ? Neu.inkMid : Neu.inkStrong).lineLimit(1)
+                }
+                .menuStyle(.borderlessButton)
+                .disabled(models.isEmpty)
+                .padding(.horizontal, NeuSpace.md).frame(height: 34).frame(maxWidth: .infinity, alignment: .leading)
+                .neuDebossed(NeuRadius.pill, depth: 0.9)
+                NeuChip(title: "存", enabled: !model.isEmpty) { save() }
+            }
+            NeuNote(text: msg.isEmpty ? Self.hint : msg)
+        }
+        .padding(.horizontal, NeuSpace.lg).padding(.vertical, NeuSpace.sm)
+        .onAppear { load() }
+    }
+
+    static var hint: String {
+        var t = "還沒裝的話：到 ollama.com 下載 Ollama，再在終端機打「ollama pull \(LocalEndpoint.suggestedModel)」（約 2.5 GB），回來按「讀取模型」。"
+        if LocalEndpoint.memoryIsTight { t += "這台電腦的記憶體不到 16 GB：本機模型會跑得很慢，開會時最好不要讓它同時整理。" }
+        return t
+    }
+
+    private func load() {
+        loading = true
+        let u = url
+        DispatchQueue.global(qos: .userInitiated).async {
+            let bad = LocalEndpoint.urlProblem(u)
+            let r = bad == nil ? LocalEndpoint.listModels(u, timeout: 3) : nil
+            DispatchQueue.main.async {
+                loading = false
+                if let bad { msg = bad; models = []; return }
+                guard let r else { msg = "連不上 \(u)——Ollama 或 LM Studio 有開著嗎？"; models = []; return }
+                models = r.models
+                if model.isEmpty || !r.models.contains(model) {
+                    model = r.models.first(where: { $0 == LocalEndpoint.suggestedModel }) ?? r.models.first ?? ""
+                }
+                msg = r.models.isEmpty ? "連上了，但裡面還沒有模型。" + Self.hint : "連上了（\(r.flavor == .ollama ? "Ollama" : "OpenAI 相容端點")），有 \(r.models.count) 個模型。選好按「存」。"
+            }
+        }
+    }
+
+    private func save() {
+        if let bad = LocalEndpoint.urlProblem(url) { msg = bad; return }
+        let u = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        try? ConfigStore.shared.update { $0.endpointURL = u == LocalEndpoint.defaultURL ? nil : u; $0.endpointModel = model }
+        msg = "已存：之後的會議交給「\(model)」整理。"
+        onSaved()
     }
 }
 

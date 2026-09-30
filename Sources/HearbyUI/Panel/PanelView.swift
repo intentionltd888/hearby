@@ -38,8 +38,8 @@ public struct PanelView: View {
         HStack {
             HearbyLogotype(height: 13, color: Neu.inkMid)
             Spacer()
-            if m.phase == .recording { HearbyMark(mode: .listening, size: 9).frame(width: 20, height: 20) }
-            Text(m.phase.label).font(NeuFont.ui(NeuType.micro)).foregroundColor(Neu.inkSoft)
+            if m.phase == .recording, !m.paused { HearbyMark(mode: .listening, size: 9).frame(width: 20, height: 20) }
+            Text(m.phase == .recording && m.paused ? "已暫停" : m.phase.label).font(NeuFont.ui(NeuType.micro)).foregroundColor(Neu.inkSoft)
             // 兩顆各管一件事：疊片＝紀錄、齒輪＝設定（只有疊片一顆時，找不到設定在哪）
             NeuIconButton(systemName: "rectangle.stack", size: 24) { m.onOpenWindow() }
                 .help("看以前的紀錄")
@@ -143,18 +143,23 @@ public struct PanelView: View {
     }
 
     // MARK: 錄音中（版面：上下置中——計時器居中、兩條聲音、出事才出現的一行、停止鈕＋一句說明）
+    // 暫停中：計時停住、波形變淡；大圓鈕換成「繼續錄」（點＝錄，同待命那顆），停止退成下面一顆小鈕
     private var recording: some View {
         VStack(spacing: NeuSpace.lg) {
             Spacer(minLength: 0)
             VStack(spacing: NeuSpace.xs) {
-                HearbyMark(mode: .listening, size: 11).frame(width: 26, height: 26)
-                Text(m.elapsedText).font(NeuFont.mark(48)).foregroundColor(Neu.inkStrong)
+                HearbyMark(mode: m.paused ? .idle : .listening, size: 11).frame(width: 26, height: 26)
+                Text(m.elapsedText).font(NeuFont.mark(48)).foregroundColor(m.paused ? Neu.inkMid : Neu.inkStrong)
                     .contentTransition(.numericText()).animation(NeuMotion.ui, value: m.elapsedText)
-                Text("正在錄").font(NeuFont.ui(NeuType.micro)).foregroundColor(Neu.inkSoft)
+                // 錄音中順便說用的是哪支麥克風（錄錯麥克風是最常見的白錄一場）
+                Text(m.paused ? "已暫停 \(m.pausedText)・這段不會存" : (m.micName.isEmpty ? "正在錄" : "正在錄・\(m.micName)"))
+                    .font(NeuFont.ui(NeuType.micro, m.paused)).foregroundColor(m.paused ? Neu.inkStrong : Neu.inkSoft)
+                    .lineLimit(1).truncationMode(.middle)
+                    .help(m.paused ? "暫停時麥克風沒有關（所以螢幕右上角的橘色麥克風點會亮著），只是這段不存；按繼續就馬上接著錄，不用重新接裝置。" : "")
             }
             VStack(spacing: NeuSpace.sm) {
-                waveRow(label: "麥克風", data: m.micHistory, dim: false)
-                if m.online { waveRow(label: "電腦裡", data: m.sysHistory, dim: !m.sysActive) }
+                waveRow(label: "麥克風", data: m.micHistory, dim: m.paused)
+                if m.online { waveRow(label: "電腦裡", data: m.sysHistory, dim: m.paused || !m.sysActive) }
             }
             if let n = m.noticeLine {
                 Text(n).font(NeuFont.ui(NeuType.caption)).foregroundColor(Neu.inkMid).multilineTextAlignment(.center).transition(.opacity)
@@ -165,13 +170,32 @@ public struct PanelView: View {
                     .padding(NeuSpace.md).frame(maxWidth: .infinity).neuDebossed(NeuRadius.card, depth: 0.8)
             }
             Spacer(minLength: 0)
+            // 大圓鈕居中，次要動作放左邊一顆小圓鈕（像手機通話畫面）：不多佔一列，出事的提醒再多也擠不掉它
             VStack(spacing: NeuSpace.sm) {
-                NeuAnchorButton(glyph: .square, size: 84) { m.onStop() }
-                Text("按一下停止，接著會自動整理").font(NeuFont.ui(NeuType.micro)).foregroundColor(Neu.inkSoft)
+                HStack(alignment: .center, spacing: NeuSpace.md) {
+                    if m.paused {
+                        sideButton("stop.fill", "停止並整理", help: "不錄了：現在就停止，接著自動整理") { m.onStop() }
+                        NeuAnchorButton(glyph: .dot, size: 84) { m.onResume() }
+                    } else {
+                        sideButton("pause.fill", "暫停", help: "中途休息時用：暫停的這段不會存，按「繼續」會接在同一份紀錄") { m.onPause() }
+                        NeuAnchorButton(glyph: .square, size: 84) { m.onStop() }
+                    }
+                    Color.clear.frame(width: 64, height: 1)
+                }
+                Text(m.paused ? "按一下繼續錄，接在同一份紀錄" : "按一下停止，接著會自動整理").font(NeuFont.ui(NeuType.micro)).foregroundColor(Neu.inkSoft)
             }
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity)
+    }
+    /// 大圓鈕旁邊的小圓鈕：圖示＋底下一行字
+    private func sideButton(_ systemName: String, _ title: String, help: String, action: @escaping () -> Void) -> some View {
+        VStack(spacing: 4) {
+            NeuIconButton(systemName: systemName, size: 44, action: action)
+            Text(title).font(NeuFont.ui(NeuType.micro)).foregroundColor(Neu.inkMid).lineLimit(1).fixedSize()
+        }
+        .frame(width: 64)
+        .help(help)
     }
     private func waveRow(label: String, data: [Float], dim: Bool) -> some View {
         HStack(spacing: NeuSpace.sm) {

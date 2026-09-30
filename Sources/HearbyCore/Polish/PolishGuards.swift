@@ -338,7 +338,9 @@ public enum PolishGuards {
             var cols = line.components(separatedBy: "｜")
             if cols.count >= 3 {
                 let due = cols[2].trimmingCharacters(in: .whitespaces)
-                if !due.isEmpty && !sourceText.contains(due) {
+                // 逐字稿的時間戳（01:55、[1:02:03]）一定「出現在原文裡」，但它是講話的位置、不是期限（小模型常這樣填）
+                let isTimestamp = due.range(of: #"^\[?(\d{1,2}:)?\d{1,3}:[0-5]\d\]?$"#, options: .regularExpression) != nil
+                if !due.isEmpty && (isTimestamp || !sourceText.contains(due)) {
                     cols[2] = ""
                     out.append(cols.joined(separator: "｜"))
                     continue
@@ -347,5 +349,23 @@ public enum PolishGuards {
             out.append(line)
         }
         return out.joined(separator: "\n")
+    }
+
+    /// 待辦負責人如果只是聲音代號（現場A、遠端B、我方、電話端…）就清空，真的人名留著。
+    /// 給本機小模型用：盲測時它每一條待辦都會自己指派一個代號（還會編出不存在的「現場C」），但代號本來就是猜的。
+    public static func clearPlaceholderOwners(notesMD: String) -> String {
+        var inTodo = false
+        return notesMD.components(separatedBy: "\n").map { line -> String in
+            if line.hasPrefix("## ") { inTodo = line.contains("待辦") }
+            guard inTodo, line.contains("- ["), line.contains("｜") else { return line }
+            var cols = line.components(separatedBy: "｜")
+            guard cols.count >= 2 else { return line }
+            let owner = cols[1].trimmingCharacters(in: .whitespaces)
+            if owner.range(of: #"^(現場|遠端|我方|電話端|受訪者|訪談者)[A-Za-zＡ-Ｚ0-9０-９]?$"#, options: .regularExpression) != nil {
+                cols[1] = ""
+                return cols.joined(separator: "｜")
+            }
+            return line
+        }.joined(separator: "\n")
     }
 }
