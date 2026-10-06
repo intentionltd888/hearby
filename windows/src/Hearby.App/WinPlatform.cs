@@ -43,7 +43,9 @@ static class WinPlatform
         if (r != 0) HearbyLog.Write($"recycle bin failed ({r}): {Path.GetFileName(path)}");
     }
 
-    /// Transcription threads from the core count (i5-1235U: 2 P + 8 E cores → 5). Falls back to half the logical CPUs
+    /// Transcription threads = physical cores, 4 to 8 (i5-1235U: 2 P + 8 E cores → 8; a 4-core i5 → 4). Measured on a CPU-only
+    /// run: 8 threads were 1.8 times as fast as 4. The child runs below normal priority, so the meeting app and the desktop stay
+    /// responsive. Falls back to half the logical CPUs
     public static int PerfCores()
     {
         try
@@ -65,9 +67,8 @@ static class WinPlatform
                     off += size;
                 }
                 if (classes.Count == 0) throw new Exception();
-                // Half the physical cores (hybrid chips: P + E together), at least 4, at most 8 and never more than logical CPUs.
-                // The child runs below normal priority, so the meeting app and the desktop stay responsive.
-                int threads = Math.Clamp((classes.Count + 1) / 2, 4, 8);
+                // physical cores (hybrid chips: P + E together), at least 4, at most 8 and never more than logical CPUs
+                int threads = Math.Clamp(classes.Count, 4, 8);
                 return Math.Min(threads, Environment.ProcessorCount);
             }
             finally { Marshal.FreeHGlobal(buf); }
@@ -206,28 +207,75 @@ sealed class WorkerEngine : IWhisperEngine
     static volatile bool noUsableGpu;
     static string lastBackend = "";
 
-    public WhisperRun Run(string model, string wav, string jsonBase, int maxContext, double timeoutSeconds, bool allowGpu)
+    public WhisperRun Run(string model, string wav, string jsonBase, int maxContext, double timeoutSeconds, bool allowGpu, Action<int>? onProgress = null)
     {
         bool gpu = allowGpu && !noUsableGpu && ConfigStore.Shared.Current.UseGPUOn;
-        var (r, backend) = RunOnce(model, wav, jsonBase, maxContext, timeoutSeconds, gpu);
+        var (r, backend) = RunOnce(model, wav, jsonBase, maxContext, timeoutSeconds, gpu, onProgress);
+        if (RunningChildren.Closing) return new WhisperRun(r.Status, r.Stderr, false, r.TimedOut);
         if (r.Status == WhisperWorker.SoftwareGpuExit && gpu)
         {
             noUsableGpu = true;
             HearbyLog.Write($"worker: software GPU ({backend}) → CPU from now on");
-            (r, backend) = RunOnce(model, wav, jsonBase, maxContext, timeoutSeconds, false);
+            (r, backend) = RunOnce(model, wav, jsonBase, maxContext, timeoutSeconds, false, onProgress);
         }
         bool usedGpu = backend.Contains("gpu=1", StringComparison.Ordinal);
         if (r.Status != 0) HearbyLog.Write($"worker exit={r.Status} backend={backend} {Tail(r.Stderr)}");
-        else if (backend.Length > 0 && backend != lastBackend) { lastBackend = backend; HearbyLog.Write($"whisper backend: {backend}（{Threads} 執行緒）"); }
+        else Remember(backend);
         return new WhisperRun(r.Status, r.Stderr, usedGpu, r.TimedOut);
     }
 
-    static (RunResult, string) RunOnce(string model, string wav, string jsonBase, int maxContext, double timeoutSeconds, bool gpu)
+    /// Load the model once and see what it runs on (a few seconds): a GPU that is really software, or that cannot even load the
+    /// model, is not used for this session's slices. Running out of time is not a GPU fault (a slow disk, or the antivirus
+    /// scanning the 0.6 GB model on first open): that says nothing, and the first slice finds out as before.
+    public bool? Probe(string model, bool allowGpu)
     {
-        var args = new List<string> { "--transcribe-worker", "--model", model, "--wav", wav, "--out", jsonBase + ".json",
-            "--threads", Threads.ToString(), "--prompt", Transcriber.Prompt, "--gpu", gpu ? "1" : "0" };
+        bool gpu = allowGpu && !noUsableGpu && ConfigStore.Shared.Current.UseGPUOn;
+        var (r, backend) = RunOnce(model, null, null, -1, 180, gpu, null);
+        if (RunningChildren.Closing) return null;
+        if (r.TimedOut) { HearbyLog.Write("probe: no answer in 180 s (model still loading) → decided by the first slice"); return null; }
+        if (r.Status == WhisperWorker.SoftwareGpuExit && gpu)
+        {
+            noUsableGpu = true;
+            HearbyLog.Write($"probe: software GPU ({backend}) → CPU from now on");
+            (r, backend) = RunOnce(model, null, null, -1, 180, false, null);
+        }
+        else if (r.Status != 0 && gpu)
+        {
+            noUsableGpu = true;
+            HearbyLog.Write($"probe failed on the GPU (exit={r.Status} {Tail(r.Stderr)}) → CPU from now on");
+            (r, backend) = RunOnce(model, null, null, -1, 180, false, null);
+        }
+        if (r.Status != 0 || backend.Length == 0) { HearbyLog.Write($"probe exit={r.Status} {Tail(r.Stderr)}"); return null; }
+        Remember(backend);
+        return backend.Contains("gpu=1", StringComparison.Ordinal);
+    }
+
+    /// The log and the check page say what the engine really ran on (once per change)
+    static void Remember(string backend)
+    {
+        if (backend.Length == 0 || backend == lastBackend) return;
+        lastBackend = backend;
+        var line = $"{backend}（{Threads} 執行緒）";
+        HearbyLog.Write($"whisper backend: {line}");
+        try { if (ConfigStore.Shared.Current.WhisperBackend != line) ConfigStore.Shared.Update(c => c.WhisperBackend = line); } catch { }
+    }
+
+    static (RunResult, string) RunOnce(string model, string? wav, string? jsonBase, int maxContext, double timeoutSeconds, bool gpu, Action<int>? onProgress)
+    {
+        var args = new List<string> { "--transcribe-worker", "--model", model };
+        if (wav != null && jsonBase != null) args.AddRange(["--wav", wav, "--out", jsonBase + ".json"]);
+        else args.Add("--probe");
+        args.AddRange(["--threads", Threads.ToString(), "--prompt", Transcriber.Prompt, "--gpu", gpu ? "1" : "0"]);
         if (maxContext >= 0) args.AddRange(["--max-context", maxContext.ToString()]);
-        var r = ProcessRunner.Run(Exe, args, timeoutSeconds: timeoutSeconds, cwd: Path.GetDirectoryName(wav), priority: ProcessPriorityClass.BelowNormal);
+        Action<string>? line = onProgress == null ? null : l =>
+        {
+            if (l.StartsWith("hearby-progress: ", StringComparison.Ordinal) && int.TryParse(l.AsSpan("hearby-progress: ".Length).Trim(), out var pct)) onProgress(pct);
+        };
+        var r = ProcessRunner.Run(Exe, args, timeoutSeconds: timeoutSeconds, cwd: Path.GetDirectoryName(wav ?? model),
+            priority: ProcessPriorityClass.BelowNormal, onStderrLine: line);
+        // progress lines are not worth keeping in error reports
+        if (r.Stderr.Contains("hearby-progress: ", StringComparison.Ordinal))
+            r = r with { Stderr = string.Join('\n', r.Stderr.Split('\n').Where(l => !l.StartsWith("hearby-progress: ", StringComparison.Ordinal))) };
         var backend = r.Stderr.Split('\n').Select(l => l.Trim()).LastOrDefault(l => l.StartsWith("hearby-backend: ", StringComparison.Ordinal))?["hearby-backend: ".Length..] ?? "";
         return (r, backend);
     }

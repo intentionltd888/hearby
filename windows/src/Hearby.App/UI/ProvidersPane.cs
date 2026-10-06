@@ -74,16 +74,19 @@ public sealed class ProvidersPane : ContentControl
         }
         else
         {
+            // same as the Mac row: the status sits right-aligned in a 200 column next to the action, at least 24 away from the
+            // description (flush against it, the status read as the end of the description's sentence)
             var d = new DockPanel { LastChildFill = true };
             DockPanel.SetDock(dot, Dock.Left);
             d.Children.Add(dot);
             var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            tag.Width = 210; tag.VerticalAlignment = VerticalAlignment.Center;
-            right.Children.Add(tag);
-            var slot = new Border { Width = 116, Child = action };
-            right.Children.Add(slot);
+            tag.HorizontalAlignment = HorizontalAlignment.Right; tag.VerticalAlignment = VerticalAlignment.Center;
+            right.Children.Add(new Border { Width = 200, Child = tag, VerticalAlignment = VerticalAlignment.Center });
+            if (action != null) action.HorizontalAlignment = HorizontalAlignment.Center;
+            right.Children.Add(new Border { Width = 110, Margin = new Thickness(Neu.MD, 0, 0, 0), Child = action, VerticalAlignment = VerticalAlignment.Center });
             DockPanel.SetDock(right, Dock.Right);
             d.Children.Add(right);
+            text.Margin = new Thickness(Neu.MD, 0, Neu.XL, 0);
             d.Children.Add(text);
             body = d;
         }

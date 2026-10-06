@@ -39,7 +39,13 @@ public sealed class WizardWindow : NeuWindow
     }
 
     Border? footerHost;
-    void OnPanelTick() { if (IsVisible && footerHost != null) footerHost.Child = Footer(); }
+    TextBlock? stageLine;
+    void OnPanelTick()
+    {
+        if (!IsVisible) return;
+        if (footerHost != null) footerHost.Child = Footer();
+        if (stageLine != null && panel.Phase == Phase.Processing) stageLine.Text = "整理中：" + panel.StageText;
+    }
     /// Structural change (phase, model ready): rebuild, except on the providers page where a sign-in may be in progress
     void OnPanelChanged()
     {
@@ -302,7 +308,7 @@ public sealed class WizardWindow : NeuWindow
         switch (panel.Phase)
         {
             case Phase.Recording: p.Children.Add(Neu.Note("聽到了，講吧。講完按停止。")); break;
-            case Phase.Processing: p.Children.Add(Neu.Note("整理中：" + panel.StageText)); break;
+            case Phase.Processing: p.Children.Add(stageLine = Neu.Note("整理中：" + panel.StageText)); break;
             case Phase.Done:
                 var ok = new StackPanel { Margin = new Thickness(0, Neu.SM, 0, 0) };
                 ok.Children.Add(Neu.Text("成功了。", Neu.TTitle, Theme.InkStrong, semi: true));

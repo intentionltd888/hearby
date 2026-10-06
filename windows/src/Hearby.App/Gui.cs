@@ -150,6 +150,7 @@ static class Gui
             case "updatecheck": Updates.CheckNow(); break;
             case "updateapply": Updates.ApplyNow(); break;
             case "lastrecord": if (AppState.Shared.Panel.LastMeeting?.MdPath is { } lr) OpenRecord(lr); break;
+            case "rename" or "back" or "transcript" or "record" or "edit" or "ai" or "repolish" or "translate": main?.TestStep(step); break;
             case "quit": Quit(0); break;
             default: HearbyLog.Write($"uiscript: 不認得的步驟 {step}"); break;
         }

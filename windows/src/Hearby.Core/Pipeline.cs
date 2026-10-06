@@ -60,19 +60,25 @@ public sealed class Pipeline
         var trackErrors = new List<string>();
         var pauses = meta.Pauses ?? [];
         var pauseCuts = PauseSpan.MidPauses(pauses, meta.Seconds).Select(p => p.AtMs).ToList();
+        bool doSys = File.Exists(sysWav) && meta.SysMax >= Silence;
         if (File.Exists(micWav) && meta.MicMax >= Silence)
         {
+            // an online meeting has a second track after this one: 「約剩」 counts it from the start
+            tr.LaterMs = doSys ? WavIO.DurationMs(sysWav) ?? 0 : 0;
             try { segs.AddRange(tr.Transcribe(micWav, micWho, "房間裡（麥克風）", dir, "mic", pauseCuts, Partial)); }
             catch (Exception e) { trackErrors.Add(e.Message); warnings.Add($"麥克風軌聽打失敗（{e.Message}）"); }
         }
         else warnings.Add("麥克風軌無聲，未聽打");
-        if (File.Exists(sysWav) && meta.SysMax >= Silence)
+        if (doSys)
         {
+            tr.LaterMs = 0;
             try { segs.AddRange(tr.Transcribe(sysWav, "遠端", "電腦裡（系統聲音）", dir, "sys", pauseCuts, Partial)); }
             catch (Exception e) { trackErrors.Add(e.Message); warnings.Add($"系統聲音軌聽打失敗（{e.Message}）"); }
         }
         else if (meta.SysMax < Silence && File.Exists(sysWav)) warnings.Add("系統聲音軌全程無聲（會議可能沒有遠端聲音）");
         warnings.AddRange(tr.Notes);
+        // the app is quitting: no half-transcribed record; the recording stays pending and is organised next time
+        if (RunningChildren.Closing) throw new HearbyError(ProcessRunner.Quitting);
         if (segs.Count == 0)
         {
             var why = trackErrors.FirstOrDefault() ?? (meta.Imported == true ? "這個檔案裡沒有偵測到語音內容" : "兩軌都沒有偵測到語音內容");

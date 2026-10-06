@@ -6,16 +6,21 @@ namespace Hearby.Core;
 
 public sealed record RunResult(int Status, string Stdout, string Stderr, bool TimedOut = false);
 
-/// Children still running; all of them are ended when the app quits (no orphaned CLIs or half-done transcription)
+/// Children still running; all of them are ended when the app quits (no orphaned CLIs or half-done transcription). Once the
+/// app is quitting no new child starts: a slice whose engine was just ended would otherwise be retried in a new child that
+/// outlives the app and keeps transcribing in the background.
 public static class RunningChildren
 {
     static readonly object Gate = new();
     static readonly HashSet<Process> Procs = [];
-    internal static void Add(Process p) { lock (Gate) Procs.Add(p); }
+    static bool closing;
+    public static bool Closing { get { lock (Gate) return closing; } }
+    /// false = the app is quitting: the caller ends the child it just started
+    internal static bool Add(Process p) { lock (Gate) { if (closing) return false; Procs.Add(p); return true; } }
     internal static void Remove(Process p) { lock (Gate) Procs.Remove(p); }
     public static void TerminateAll()
     {
-        Process[] all; lock (Gate) all = [.. Procs];
+        Process[] all; lock (Gate) { closing = true; all = [.. Procs]; }
         foreach (var p in all) { try { if (!p.HasExited) p.Kill(entireProcessTree: true); } catch { } }
     }
 }
@@ -47,8 +52,12 @@ public static class ChildEnv
 
 public static class ProcessRunner
 {
+    public const string Quitting = "Hearby 正在結束";
+
+    /// onStderrLine: each stderr line as it arrives (on a pool thread), for children that report progress while they work
     public static RunResult Run(string launchPath, IEnumerable<string> args, string? stdin = null,
-        IDictionary<string, string>? env = null, double timeoutSeconds = 600, string? cwd = null, ProcessPriorityClass? priority = null)
+        IDictionary<string, string>? env = null, double timeoutSeconds = 600, string? cwd = null, ProcessPriorityClass? priority = null,
+        Action<string>? onStderrLine = null)
     {
         var psi = new ProcessStartInfo(launchPath)
         {
@@ -77,10 +86,21 @@ public static class ProcessRunner
         var outDone = new ManualResetEventSlim();
         var errDone = new ManualResetEventSlim();
         p.OutputDataReceived += (_, e) => { if (e.Data == null) outDone.Set(); else lock (outSb) outSb.Append(e.Data).Append('\n'); };
-        p.ErrorDataReceived += (_, e) => { if (e.Data == null) errDone.Set(); else lock (errSb) errSb.Append(e.Data).Append('\n'); };
+        p.ErrorDataReceived += (_, e) =>
+        {
+            if (e.Data == null) { errDone.Set(); return; }
+            lock (errSb) errSb.Append(e.Data).Append('\n');
+            if (onStderrLine != null) { try { onStderrLine(e.Data); } catch { } }
+        };
+        if (RunningChildren.Closing) return new RunResult(-1, "", Quitting);
         try { if (!p.Start()) return new RunResult(-1, "", "無法啟動"); }
         catch (Exception e) { return new RunResult(-1, "", e.Message); }
-        RunningChildren.Add(p);
+        if (!RunningChildren.Add(p))
+        {
+            try { p.Kill(entireProcessTree: true); } catch { }
+            p.Dispose();
+            return new RunResult(-1, "", Quitting);
+        }
         try
         {
             if (priority is { } pr) { try { p.PriorityClass = pr; } catch { } }

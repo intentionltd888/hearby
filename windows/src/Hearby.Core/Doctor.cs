@@ -42,12 +42,14 @@ public static class Doctor
         PlatformChecks?.System() ?? new DoctorItem("系統", DoctorItem.Status.Unknown, "查不到"),
         PlatformChecks?.Microphone() ?? new DoctorItem("麥克風", DoctorItem.Status.Unknown, "查不到"),
         PlatformChecks?.SystemAudio() ?? new DoctorItem("系統聲", DoctorItem.Status.Unknown, "查不到"),
-        Model(), Provider(deep), Disk(), Folder(),
+        Model(deep), Provider(deep), Disk(), Folder(),
     ]);
 
     static string Gb(double bytes) => (bytes / 1_073_741_824).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
 
-    public static DoctorItem Model()
+    /// deep: also load the model once to see whether this PC transcribes on a GPU or on the CPU (a few seconds; skipped while
+    /// a meeting is being transcribed)
+    public static DoctorItem Model(bool deep = false)
     {
         if (Transcriber.Engine is not { Available: true }) return new("聽打模型", DoctorItem.Status.Missing, "聽打引擎遺失——請重新安裝 Hearby");
         if (ModelCatalog.InstalledModel() is { } m)
@@ -55,9 +57,34 @@ public static class Doctor
             long size = 0; try { size = new FileInfo(m).Length; } catch { }
             if (ModelCatalog.SpecFor(Path.GetFileName(m)) is { } spec && spec.Bytes > 0 && size != spec.Bytes)
                 return new("聽打模型", DoctorItem.Status.Warn, $"檔案大小不對（{Gb(size)} GB，應該是 {Gb(spec.Bytes)} GB）——可能沒下載完。把它移走後重開 Hearby 會重新下載：{m}");
-            return new("聽打模型", DoctorItem.Status.Ok, $"已在（{Gb(size)} GB）{Path.GetDirectoryName(m)}");
+            if (deep && !Transcriber.Busy) Transcriber.Engine.Probe(m, ConfigStore.Shared.Current.UseGPUOn);
+            return new("聽打模型", DoctorItem.Status.Ok, $"已在（{Gb(size)} GB）{Path.GetDirectoryName(m)}{LastRun()}");
         }
         return new("聽打模型", DoctorItem.Status.Missing, $"還沒下載（{Gb(ModelCatalog.Default.Bytes)} GB）——設定精靈第一頁按「開始設定」就會在背景下載");
+    }
+
+    /// 「；聽打用顯示卡 Intel(R) Iris(R) Xe Graphics，10 分鐘的錄音約 3 分鐘」: what the engine really runs on (as it said the last
+    /// time it loaded) and how fast the last meeting went — the question behind "why is it slow"; empty before it ever loaded
+    public static string LastRun()
+    {
+        var c = ConfigStore.Shared.Current;
+        if (c.WhisperBackend is not { Length: > 0 } b) return "";
+        bool gpu = b.Contains("gpu=1", StringComparison.Ordinal);
+        string what;
+        if (gpu)
+        {
+            var dev = b.Split(' ', 3) is { Length: 3 } parts ? parts[2] : "";
+            int cut = dev.IndexOf('（'); if (cut >= 0) dev = dev[..cut];
+            what = $"顯示卡{(dev.Trim().Length > 0 ? " " + dev.Trim() : "")}";
+        }
+        else
+        {
+            int t = b.IndexOf('（');
+            what = "處理器" + (t >= 0 ? b[t..] : "") + (b.StartsWith("CpuNoAvx", StringComparison.Ordinal) ? "，這顆處理器沒有 AVX2，會很慢" : "");
+        }
+        var speed = gpu ? c.WhisperSpeedGPU : c.WhisperSpeedCPU;
+        var pace = speed is { } x && x > 0 ? $"，10 分鐘的錄音約 {Math.Max(1, (int)Math.Round(10 / x))} 分鐘" : "";
+        return $"；聽打用{what}{pace}";
     }
 
     public static DoctorItem Provider(bool deep)

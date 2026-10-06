@@ -693,7 +693,7 @@ public class ContractTests
     sealed class FakeWhisper(string dir) : IWhisperEngine
     {
         public bool Available => true;
-        public WhisperRun Run(string model, string wav, string jsonBase, int maxContext, double timeoutSeconds, bool allowGpu)
+        public WhisperRun Run(string model, string wav, string jsonBase, int maxContext, double timeoutSeconds, bool allowGpu, Action<int>? onProgress = null)
         {
             var src = Path.Combine(dir, Path.GetFileName(jsonBase) + ".json");
             File.WriteAllText(jsonBase + ".json", File.Exists(src) ? File.ReadAllText(src) : "{\"transcription\":[]}");

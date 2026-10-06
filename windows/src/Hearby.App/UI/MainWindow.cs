@@ -34,6 +34,9 @@ public sealed class MainWindow : NeuWindow
         Rebuild();
     }
 
+    /// Test hook (HEARBY_UI_SCRIPT): rename / back / transcript / record / edit / ai / repolish / translate on the records tab
+    public void TestStep(string step) { if (tab == 0) records.TestStep(step); }
+
     protected override UIElement BuildContent()
     {
         var root = new DockPanel { Margin = new Thickness(Neu.Edge, 8, Neu.Edge, Neu.MD), LastChildFill = true };
@@ -119,7 +122,8 @@ public sealed class RecordsView : ContentControl
 
     void Build()
     {
-        if (selected is { } s) { Content = new MeetingDetail(s, () => { selected = null; Reload(); Build(); }); return; }
+        if (selected is { } s) { Content = detail = new MeetingDetail(s, () => { selected = null; detail = null; Reload(); Build(); }); return; }
+        detail = null;
         var p = new DockPanel { LastChildFill = true };
         var bar = new DockPanel { LastChildFill = true, Margin = new Thickness(0, 0, 0, Neu.MD) };
         var chips = Neu.Row(Neu.XS, Neu.Chip("搜", Search), Neu.Chip("打開資料夾", () => Exporters.Reveal(Paths.Meetings), Neu.IcFolder));
@@ -241,6 +245,14 @@ public sealed class RecordsView : ContentControl
         return card;
     }
 
+    MeetingDetail? detail;
+    public void TestStep(string step)
+    {
+        if (step == "rename" && detail == null && items.FirstOrDefault() is { } first) BeginRename(first);
+        else if (step == "back" && detail != null) { selected = null; detail = null; Reload(); Build(); }
+        else detail?.TestStep(step);
+    }
+
     void BeginRename(MeetingItem it)
     {
         renaming = it;
@@ -338,6 +350,21 @@ public sealed class MeetingDetail : ContentControl
         }
     }
 
+    public void TestStep(string step)
+    {
+        switch (step)
+        {
+            case "transcript": mode = 1; break;
+            case "record": mode = 0; break;
+            case "edit": draft = md; editing = true; showAI = showRepolish = showTranslate = false; break;
+            case "ai": showAI = true; showRepolish = showTranslate = false; break;
+            case "repolish": showRepolish = true; showAI = showTranslate = false; break;
+            case "translate": showTranslate = true; showAI = showRepolish = false; break;
+            default: return;
+        }
+        Build();
+    }
+
     bool AIAllowed => !editing && !busy;
     string AIBlockedHelp => editing ? "正在自己改：先按「存檔」或「取消」，才能請 AI 改" : busy ? "AI 正在跑，等它做完" : "";
 
@@ -417,8 +444,11 @@ public sealed class MeetingDetail : ContentControl
                 top.Children.Add(Neu.Note($"這一場有 {ask.Count} 個名字 AI 沒把握、沒有改（紀錄裡標了 [[?]]）。答一次就記住，之後的會議不會再問。"));
                 foreach (var q in ask.Take(8))
                 {
-                    var row = new WrapPanel();
-                    row.Children.Add(Neu.Text($"「{q.Heard}」是「{q.Name}」嗎？", Neu.TBody, Theme.InkStrong));
+                    // same as the Mac row: question and the two chips on one centred line
+                    var row = new WrapPanel { Margin = new Thickness(0, Neu.XS, 0, 0) };
+                    var question = Neu.Text($"「{q.Heard}」是「{q.Name}」嗎？", Neu.TBody, Theme.InkStrong);
+                    question.VerticalAlignment = VerticalAlignment.Center; question.Margin = new Thickness(0, 0, Neu.SM, 0);
+                    row.Children.Add(question);
                     row.Children.Add(Neu.Chip("是", () => AnswerName(q, true), Neu.IcCheck));
                     row.Children.Add(Neu.Chip("不是", () => AnswerName(q, false), Neu.IcCancel));
                     top.Children.Add(row);
@@ -753,7 +783,8 @@ public sealed class StatusView : ContentControl
     public StatusView()
     {
         Build();
-        Task.Run(() => { var r = Doctor.Run(false); Gui.OnUi(() => { report ??= r; Build(); }); });
+        // the full check (sign-in included) from the start: the quick one ends in 「加 --deep 才查」, a command-line hint
+        Task.Run(() => { var r = Doctor.Run(true); Gui.OnUi(() => { report ??= r; Build(); }); });
     }
 
     void Build()

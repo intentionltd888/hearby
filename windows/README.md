@@ -11,6 +11,7 @@
 4. 精靈第一頁按「開始設定」，聽打模型（約 0.6 GB）會在背景下載，一次就好。
 
 - **需要**：Windows 10 22H2 或 Windows 11，x64 處理器（Intel／AMD）；建議 8 GB 以上記憶體。ARM 處理器（Snapdragon）的 Windows 11 以相容模式執行，能用但聽打比較慢。
+- **聽打速度**：有支援 Vulkan 的顯示卡就用顯示卡；沒有就用處理器，會慢很多。這台用的是哪一種、10 分鐘的錄音大約要幾分鐘，寫在「設定 › 檢查」的「聽打模型」那一行；整理中面板上的「約剩」照這台實際的速度算。
 - **SHA-256**：每個版本的 Release 頁附 `SHA256SUMS.txt`，PowerShell 可以 `Get-FileHash .\Hearby-Setup.exe` 自己比對。
 - **「智慧型應用程式控制」（Smart App Control）**：這個功能開著的 Windows 11 會直接擋掉沒有簽章的程式、沒有「仍要執行」可按。大部分電腦沒有開；有開的話目前沒辦法安裝，只能等之後有簽章的版本。
 - **更新**：Hearby 會在背景向 GitHub 查新版，有的話先下載好，下次打開就換新（設定 → 更新 可以關掉自動檢查，或按「現在更新」）。
@@ -30,7 +31,7 @@
 |---|---|---|
 | 住哪 | 工作列右下角的通知區 | 選單列 |
 | 權限 | 不跳視窗；只看「設定 › 隱私權與安全性 › 麥克風」有沒有開。錄電腦裡的聲音不需要權限 | 麥克風、系統聲音各問一次 |
-| 聽打引擎 | whisper.cpp（經 Whisper.net）：有 Vulkan 顯示卡就用顯示卡，沒有就用處理器；每一片在獨立的子行程裡跑，顯示卡驅動當掉也不會拖垮 app | whisper.cpp（Metal） |
+| 聽打引擎 | whisper.cpp（經 Whisper.net）：開始前先載入一次模型，確定有 Vulkan 顯示卡就用顯示卡，沒有就用處理器（實體核心數個執行緒、最多 8；5 分鐘一片）；每一片在獨立的子行程裡跑，顯示卡驅動當掉也不會拖垮 app | whisper.cpp（Metal） |
 | 聽打模型 | large-v3-turbo 量化版（q5_0，約 0.6 GB）；模型夾裡放完整版也會用 | large-v3-turbo（約 1.6 GB） |
 | 整理方式 | 你自己的 Claude Code、本機模型（Ollama／LM Studio）、只要逐字稿 | 另外有 ChatGPT（Codex） |
 | PDF | 用這台電腦的 Microsoft Edge 在背景排版（不開視窗；那一頁不准跑程式碼、不准載入任何外部資源） | WebKit |
@@ -81,7 +82,7 @@ Hearby.exe 是視窗程式；在 PowerShell 裡接 `| Out-Host`，PowerShell 才
 
 ```powershell
 $h = "$env:LOCALAPPDATA\HearbyApp\current\Hearby.exe"
-& $h --doctor --deep | Out-Host                         # 七項體檢
+& $h --doctor --deep | Out-Host                         # 七項體檢（--deep 另外查 Claude 登入、載入一次模型看聽打用顯示卡還是處理器）
 & $h --download-model | Out-Host                        # 下載聽打模型
 & $h --import 會議.m4a --title 週會 --provider claude | Out-Host   # 聽打並整理一個音檔（endpoint＝設定裡的本機模型）
 & $h --record 40 --source online --pause-at 14 --resume-at 24 --no-process | Out-Host   # 開發用：真錄 40 秒、中途暫停 10 秒

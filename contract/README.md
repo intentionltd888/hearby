@@ -27,4 +27,4 @@ dotnet test windows/tests/Hearby.Core.Tests                        # C# 要照�
 ```
 
 不設 `HEARBY_WRITE_CONTRACT` 時，Swift 的測試是拿現有的 fixtures 比對，確認 macOS 核心沒有不小心改變輸出。
-產生 fixtures 用的 Swift 測試（`Tests/HearbyCoreTests/ContractFixtureTests.swift`）跟著 macOS 版的原始碼一起發佈；這一版的 fixtures 來自 macOS 核心 2.1.0（build 22）。
+產生 fixtures 用的 Swift 測試（`Tests/HearbyCoreTests/ContractFixtureTests.swift`）跟著 macOS 版的原始碼一起發佈；這一版的 fixtures 來自 macOS 核心 2.1.0（build 22），build 23 拿同一份照樣全綠（2026-10-06 重跑）。

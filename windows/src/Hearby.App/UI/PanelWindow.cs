@@ -184,8 +184,10 @@ public sealed class PanelWindow : NeuWindow
             var chips = Neu.Row(Neu.XS, Neu.Chip("補整理", () => s.Recover(r)), Neu.Chip("略過", () => s.IgnoreRecovery(r)));
             DockPanel.SetDock(chips, Dock.Right);
             line.Children.Add(chips);
-            var n = Neu.Note($"有 {m.PendingRecoveries.Count} 場錄音還沒整理（{Fmt.Dur(r.Seconds)}）");
-            n.VerticalAlignment = VerticalAlignment.Center;
+            // the length moves to the next line as a whole instead of breaking inside 「2分59秒」
+            var n = new WrapPanel { VerticalAlignment = VerticalAlignment.Center };
+            n.Children.Add(Neu.Note($"有 {m.PendingRecoveries.Count} 場錄音還沒整理"));
+            n.Children.Add(Neu.Text($"（{Fmt.Dur(r.Seconds)}）", Neu.TMicro, Theme.InkMid, wrap: false));
             line.Children.Add(n);
             bottom.Children.Add(line);
         }
@@ -362,17 +364,15 @@ public sealed class PanelWindow : NeuWindow
 
     // ── processing ──
     static readonly string[] Stages = ["聽打", "清理", "整理", "存檔"];
-    int CurrentStage
+    /// Which of the four stages a stage line belongs to (AppState redraws the list only when this changes)
+    public static int StageIndex(string t)
     {
-        get
-        {
-            var t = m.StageText;
-            if (t.Contains("存檔")) return 3;
-            if (t.Contains("整理") && !t.Contains("補整理")) return 2;
-            if (t.Contains("壓製") || t.Contains("逐字稿版")) return 1;
-            return 0;
-        }
+        if (t.Contains("存檔")) return 3;
+        if (t.Contains("整理") && !t.Contains("補整理")) return 2;
+        if (t.Contains("壓製") || t.Contains("逐字稿版")) return 1;
+        return 0;
     }
+    int CurrentStage => StageIndex(m.StageText);
 
     FrameworkElement Processing()
     {

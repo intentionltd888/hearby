@@ -2,6 +2,10 @@
 // ({"transcription":[{"offsets":{"from":ms,"to":ms},"text":"…"}]}), the same shape the macOS parser reads.
 // Settings mirror the macOS whisper-cli call: zh, the Taiwanese prompt carried across windows, beam search 5,
 // temperature 0 (+0.2 fallback), entropy 2.4, log-prob −1, no-speech 0.6; "--max-context 16" for the retry pass.
+// Flash attention (whisper-cli's default since 1.8) on the CPU only: measured there 15% faster with the same text. The Vulkan
+// path keeps 1.0's setting until it has been measured on a real Windows GPU.
+// Progress goes to stderr as "hearby-progress: <percent>" (one line per 30-second window) so the panel's 「約剩」 counts down.
+// "--probe": load the model, say which engine it runs on, exit (the parent plans slices and estimates from that).
 // GPU: Vulkan when allowed and present, else CPU (AVX2) → CPU without AVX. The engine's own log says whether a GPU device
 // was really used (the Vulkan build still runs on the CPU when the machine has no Vulkan GPU); the result goes to stderr as
 // "hearby-backend: <library> gpu=0|1 <device>" for the parent.
@@ -22,7 +26,8 @@ static class WhisperWorker
     {
         string? Arg(string k) { int i = Array.IndexOf(args, k); return i >= 0 && i + 1 < args.Length ? args[i + 1] : null; }
         var model = Arg("--model"); var wav = Arg("--wav"); var outPath = Arg("--out");
-        if (model == null || wav == null || outPath == null) { Console.Error.WriteLine("usage: --transcribe-worker --model M --wav W --out J"); return 2; }
+        bool probe = args.Contains("--probe");
+        if (model == null || (!probe && (wav == null || outPath == null))) { Console.Error.WriteLine("usage: --transcribe-worker --model M (--wav W --out J | --probe)"); return 2; }
         int threads = int.TryParse(Arg("--threads"), out var t) ? t : 4;
         int maxContext = int.TryParse(Arg("--max-context"), out var mc) ? mc : -1;
         bool gpu = Arg("--gpu") != "0";
@@ -50,7 +55,8 @@ static class WhisperWorker
                 .WithEntropyThreshold(2.4f)
                 .WithLogProbThreshold(-1f)
                 .WithNoSpeechThreshold(0.6f)
-                .WithBeamSearchSamplingStrategy(b => b.WithBeamSize(5));
+                .WithBeamSearchSamplingStrategy(b => b.WithBeamSize(5))
+                .WithProgressHandler(p => Console.Error.WriteLine("hearby-progress: " + p));
             if (maxContext >= 0) builder = builder.WithMaxLastTextTokens(maxContext);
             using var processor = builder.Build();
             string[] lines; lock (native) lines = [.. native];
@@ -60,7 +66,8 @@ static class WhisperWorker
             // A "GPU" that is really the CPU drawing in software (virtual machines, remote desktops, missing drivers) is slower
             // than the CPU engine itself: tell the parent to run on the CPU instead
             if (usedGpu && SoftwareGpu.Any(k => device.Contains(k, StringComparison.OrdinalIgnoreCase))) return SoftwareGpuExit;
-            var samples = ReadWav(wav);
+            if (probe) return 0;
+            var samples = ReadWav(wav!);
             var list = new JsonArray();
             var task = Task.Run(async () =>
             {
@@ -74,7 +81,7 @@ static class WhisperWorker
             task.GetAwaiter().GetResult();
             var tmp = outPath + ".tmp";
             File.WriteAllText(tmp, new JsonObject { ["transcription"] = list }.ToJsonString(), new UTF8Encoding(false));
-            File.Move(tmp, outPath, overwrite: true);
+            File.Move(tmp, outPath!, overwrite: true);
             return 0;
         }
         catch (Exception e)
@@ -88,7 +95,7 @@ static class WhisperWorker
     /// engine can open them; if that still fails, the model is handed over as a buffer instead of a path.
     static WhisperFactory OpenModel(string path, bool gpu)
     {
-        var opts = new WhisperFactoryOptions { UseGpu = gpu };
+        var opts = new WhisperFactoryOptions { UseGpu = gpu, UseFlashAttention = !gpu };
         try { return WhisperFactory.FromPath(path, opts); }
         catch (Exception e) when (path.Any(c => c > 127))
         {

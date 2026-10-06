@@ -16,8 +16,11 @@ public interface IWhisperEngine
 {
     /// Is the engine present at all (the macOS check was "is whisper-cli there")
     bool Available { get; }
-    /// Transcribe wav → writes jsonBase + ".json" in whisper-cli -oj format. maxContext: -1 = default, 16 = the "-mc 16" retry
-    WhisperRun Run(string model, string wav, string jsonBase, int maxContext, double timeoutSeconds, bool allowGpu);
+    /// Transcribe wav → writes jsonBase + ".json" in whisper-cli -oj format. maxContext: -1 = default, 16 = the "-mc 16" retry.
+    /// onProgress: percent of this wav done (0–100), called on a background thread while it runs
+    WhisperRun Run(string model, string wav, string jsonBase, int maxContext, double timeoutSeconds, bool allowGpu, Action<int>? onProgress = null);
+    /// Load the model once without transcribing: true = it will run on a GPU, false = on the CPU, null = cannot tell
+    bool? Probe(string model, bool allowGpu) => null;
 }
 
 public sealed class Transcriber
@@ -26,6 +29,8 @@ public sealed class Transcriber
     void Stage(string s) => OnStage?.Invoke(s);
 
     public const int SliceTargetMs = 15 * 60_000;
+    /// Slices on the CPU: a failure or a quit loses less, and the countdown moves sooner
+    public const int CpuSliceMs = 5 * 60_000;
     public const int SliceSearchMs = 30_000;
     public const float SliceSilence = 0.015f;
     /// Below this = truly no sound (the system track without an online meeting is digital silence)
@@ -38,8 +43,44 @@ public sealed class Transcriber
     public List<string> Notes { get; } = [];
     /// null = not known yet; false = running on the CPU
     public bool? UsedGpu { get; private set; }
+    /// Audio (ms) of the tracks still waiting after this one: 「約剩」 covers the whole meeting, it does not start over per track
+    public long LaterMs { get; set; }
 
     public static IWhisperEngine? Engine { get; set; }
+
+    // Work measured across tracks (the second track starts from the first one's speed). Time the PC slept is not work
+    // (whether the clock counts sleep differs between PCs): a long gap between two progress reports is left out (Progress)
+    long ranMs;
+    double ranSecs;
+
+    /// Audio ms transcribed per second of work: measured once there is enough of it, else the last meeting's speed on the same
+    /// kind of engine (config), else unknown. A guess from the last meeting needs 30 s of this one to be replaced, so the first
+    /// minute does not swing.
+    double? Speed(double extraMs = 0, double extraSecs = 0)
+    {
+        double ms = ranMs + extraMs, secs = ranSecs + extraSecs;
+        var c = ConfigStore.Shared.Current;
+        // not probed (a short track): the engine this PC used last time
+        bool? gpu = UsedGpu ?? (c.WhisperBackend is { Length: > 0 } wb ? wb.Contains("gpu=1", StringComparison.Ordinal) : null);
+        double? remembered = (gpu == true ? c.WhisperSpeedGPU : gpu == false ? c.WhisperSpeedCPU : null) is { } x && x > 0 ? x * 1000 : null;
+        if (ms > 0 && secs >= (remembered == null ? 5 : 30)) return ms / secs;
+        return remembered;
+    }
+
+    /// 「約剩 8 分鐘」: whole minutes (seconds would look precise and jump around)
+    public static string EtaText(double seconds)
+    {
+        if (seconds < 60) return "・剩不到 1 分鐘";
+        int min = (int)Math.Ceiling(seconds / 60);
+        return min < 60 ? $"・約剩 {min} 分鐘" : $"・約剩 {min / 60} 小時 {min % 60} 分";
+    }
+
+    string Line(string label, int i, int n, double? etaSecs)
+    {
+        var cpuNote = UsedGpu == false ? "（本機以 CPU 轉寫，較慢）" : "";
+        var part = n > 1 ? $" {i + 1}/{n}" : "";
+        return $"聽打{label}{part}{(etaSecs is { } e ? EtaText(e) : "…")}{cpuNote}";
+    }
 
     /// Quiet slice (peak 0.1 s level below SliceSilence): boost it and transcribe instead of dropping it; null = skip as before.
     /// Reasoning and measurements: see Transcriber.quietBoost in the macOS source.
@@ -176,10 +217,10 @@ public sealed class Transcriber
         return (bad, punctRatio - rawRepeatRatio - latchRatio);
     }
 
-    WhisperRun RunWhisper(string model, string wav, string jsonBase, int maxContext, double timeout)
+    WhisperRun RunWhisper(string model, string wav, string jsonBase, int maxContext, double timeout, Action<int>? onProgress = null)
     {
         var engine = Engine ?? throw new HearbyError("聽打引擎沒有接上");
-        return engine.Run(model, wav, jsonBase, maxContext, timeout, allowGpu: ConfigStore.Shared.Current.UseGPUOn && UsedGpu != false);
+        return engine.Run(model, wav, jsonBase, maxContext, timeout, allowGpu: ConfigStore.Shared.Current.UseGPUOn && UsedGpu != false, onProgress);
     }
 
     (List<Segment>, int) RepairLoops(List<Segment> segs, List<(int, int)> loops, int sliceFrom, int sliceTo, string wav, string who,
@@ -257,8 +298,18 @@ public sealed class Transcriber
     /// cuts = positions (ms) that must be cut (mid pauses), see PlanSlices
     public List<Segment> Transcribe(string wav, string who, string label, string workDir, string track, IReadOnlyList<int>? cuts = null, Action<List<Segment>>? onPartial = null)
     {
-        cuts ??= [];
-        if (Engine is not { Available: true }) throw new HearbyError("找不到聽打引擎（請重新安裝 Hearby）");
+        Interlocked.Increment(ref active);
+        try { return TranscribeTrack(wav, who, label, workDir, track, cuts ?? [], onPartial); }
+        finally { Interlocked.Decrement(ref active); }
+    }
+
+    static int active;
+    /// A track is being transcribed right now (the check page does not load a second copy of the model meanwhile)
+    public static bool Busy => Volatile.Read(ref active) > 0;
+
+    List<Segment> TranscribeTrack(string wav, string who, string label, string workDir, string track, IReadOnlyList<int> cuts, Action<List<Segment>>? onPartial)
+    {
+        if (Engine is not { Available: true } engine) throw new HearbyError("找不到聽打引擎（請重新安裝 Hearby）");
         var model = ModelCatalog.InstalledModel() ?? throw new HearbyError($"找不到聽打模型（{ModelCatalog.Default.File}）");
         if (WavIO.DurationMs(wav) is not { } totalMs || totalMs <= 0)
         {
@@ -266,7 +317,25 @@ public sealed class Transcriber
             return [];
         }
         HearbyLog.Write($"transcribe start {track} {totalMs / 60000}min");
-        int target = UsedGpu == false ? 5 * 60_000 : SliceTargetMs;
+        // A resumed run cuts the way the first run did (the slice length is kept next to the slices): kept JSON is named by
+        // slice number, and a 15-minute "w00" read back as a 5-minute one would lose ten minutes
+        var planFile = Path.Combine(workDir, $"{track}.slicems");
+        int target;
+        if (File.Exists(planFile) && int.TryParse(File.ReadAllText(planFile).Trim(), out var keptTarget) && keptTarget >= 60_000) target = keptTarget;
+        else
+        {
+            // Know the engine before cutting a long track: a CPU-only PC gets 5-minute slices and an honest 「約剩」 from the first
+            // slice (guessing "GPU" made the first estimate twenty times too short). A track shorter than about one CPU slice
+            // is one slice either way and is not worth loading the model an extra time (a silent file then fails fast);
+            // its first slice says which engine ran.
+            if (UsedGpu == null && totalMs > CpuSliceMs * 135 / 100 && !RunningChildren.Closing)
+            {
+                UsedGpu = ConfigStore.Shared.Current.UseGPUOn ? engine.Probe(model, true) : false;
+                if (UsedGpu != null) HearbyLog.Write($"whisper probe gpu={UsedGpu == true}");
+            }
+            target = UsedGpu == false ? CpuSliceMs : SliceTargetMs;
+            try { File.WriteAllText(planFile, target.ToString(System.Globalization.CultureInfo.InvariantCulture)); } catch { }
+        }
         var slices = PlanSlices(wav, totalMs, target, cuts);
         var sliceDir = Path.Combine(workDir, "slices");
         Directory.CreateDirectory(sliceDir);
@@ -277,20 +346,20 @@ public sealed class Transcriber
         var boostedSpans = new List<(int, int)>();
         int loopFixes = 0, degenFixes = 0;
         var degenLeft = new List<(int, int)>();
-        long ranMs = 0;
-        double ranSecs = 0;
+        long trackRanMs = 0;
+        double trackRanSecs = 0;
         var partial = Path.Combine(workDir, $"transcript.partial-{track}.md");
 
         for (int i = 0; i < slices.Count; i++)
         {
+            // quitting: stop here (the kept slices resume next time); nothing is retried in a child that would outlive the app
+            if (RunningChildren.Closing) throw new HearbyError(ProcessRunner.Quitting);
             var (a, b) = slices[i];
             var name = $"{track}-w{Str.D2(i)}" + (cuts.Count == 0 ? "" : $"-{a / 1000}s");
             var jsonUrl = Path.Combine(workDir, name + ".json");
-            double speed = (ranMs > 0 && ranSecs > 0) ? ranMs / ranSecs : (UsedGpu == false ? 700.0 : 15000.0);
-            long remainMs = slices.Skip(i).Sum(x => (long)(x.Item2 - x.Item1));
-            var eta = $"・約剩 {Fmt.Dur(remainMs / speed)}";
-            var cpuNote = UsedGpu == false ? "（本機以 CPU 轉寫，較慢）" : "";
-            Stage(slices.Count > 1 ? $"聽打{label} {i + 1}/{slices.Count}{eta}{cpuNote}" : $"聽打{label}…{cpuNote}");
+            long remainMs = slices.Skip(i).Sum(x => (long)(x.Item2 - x.Item1)) + LaterMs;
+            int si = i;
+            Stage(Line(label, i, slices.Count, Speed() is { } sp ? remainMs / sp : null));
 
             Parsed? parsed = File.Exists(jsonUrl) ? TryParse(jsonUrl, a, who) : null;
             var silentFlag = Path.Combine(workDir, name + ".silent");
@@ -322,19 +391,41 @@ public sealed class Transcriber
                 }
                 else if (!WavIO.WriteSlice(wav, a, b, sliceUrl)) { failed.Add((a, b)); continue; }
                 var sw = Stopwatch.StartNew();
+                // The engine reports how far into the slice it is: 「約剩」 counts down while a slice runs instead of standing
+                // still for its whole length. A gap between two reports far longer than the slice should take = the PC slept;
+                // that gap is not work and is left out of the speed.
+                double lastAt = 0, slept = 0;
+                string shown = "";
+                void Progress(int pct)
+                {
+                    double now = sw.Elapsed.TotalSeconds;
+                    if (now - lastAt > Math.Max(600, (b - a) / 1000.0 * 2)) slept += now - lastAt;
+                    lastAt = now;
+                    if (pct <= 0 || pct >= 100) return;
+                    double doneMs = (b - a) * pct / 100.0;
+                    if (Speed(doneMs, now - slept) is not { } sp) return;
+                    var line = Line(label, si, slices.Count, (remainMs - doneMs) / sp);
+                    if (line != shown) { shown = line; Stage(line); }
+                }
                 for (int attempt = 1; attempt <= 2; attempt++)
                 {
-                    var r = RunWhisper(model, sliceUrl, Path.Combine(workDir, name), -1, Math.Max(600, (b - a) / 1000.0 * 4));
+                    lastAt = sw.Elapsed.TotalSeconds;
+                    var r = RunWhisper(model, sliceUrl, Path.Combine(workDir, name), -1, Math.Max(600, (b - a) / 1000.0 * 4), Progress);
                     if (UsedGpu == null) { UsedGpu = r.UsedGpu; HearbyLog.Write($"whisper gpu={UsedGpu == true}"); }
                     if (File.Exists(jsonUrl) && TryParse(jsonUrl, a, who) is { } p) { parsed = p; break; }
                     TryDelete(jsonUrl);
                     HearbyLog.Write($"whisper {name} attempt {attempt} fail ({r.Status}): {Tail(r.Stderr, 200)}");
-                    // GPU trouble (driver lost the device, out of VRAM): the retry of this slice runs on the CPU
-                    if (r.UsedGpu) UsedGpu = false;
+                    // ended because the app is quitting: not a GPU fault, not worth a retry
+                    if (RunningChildren.Closing) { TryDelete(sliceUrl); throw new HearbyError(ProcessRunner.Quitting); }
+                    // GPU trouble (driver lost the device, out of VRAM): the retry of this slice runs on the CPU, and the speed
+                    // measured on the GPU no longer says anything about what is left
+                    if (r.UsedGpu) { UsedGpu = false; ranMs = 0; ranSecs = 0; }
+                    // the failed attempt's time is not this slice's speed
+                    slept = sw.Elapsed.TotalSeconds;
                 }
                 TryDelete(sliceUrl);
-                ranSecs += sw.Elapsed.TotalSeconds;
-                ranMs += b - a;
+                double secs = sw.Elapsed.TotalSeconds - slept;
+                if (parsed != null && secs > 0) { ranSecs += secs; ranMs += b - a; trackRanSecs += secs; trackRanMs += b - a; }
                 if (parsed == null) { failed.Add((a, b)); continue; }
             }
             bool boosted = File.Exists(boostFlag);
@@ -362,6 +453,8 @@ public sealed class Transcriber
                     if (wrote)
                     {
                         HearbyLog.Write($"degen retry {name} score={Fmt.Inv(deg.Score, "0.000")}");
+                        // as long as the slice itself: say why the countdown stops for a while
+                        Stage($"聽打{label}{(slices.Count > 1 ? $" {i + 1}/{slices.Count}" : "")}：這一段聽得不清楚，換個方式重聽一次…{(UsedGpu == false ? "（本機以 CPU 轉寫，較慢）" : "")}");
                         RunWhisper(model, sliceUrl, Path.Combine(workDir, name + "-r"), 16, Math.Max(600, (b - a) / 1000.0 * 4));
                         retry = TryParse(retryJson, a, who);
                         TryDelete(sliceUrl);
@@ -412,7 +505,14 @@ public sealed class Transcriber
             Notes.Add($"{label}音軌 {spans} 附近語音辨識品質異常（重複或缺標點），內容可能不完整");
         }
         if (UsedGpu == false && !Notes.Any(n => n.Has("CPU"))) Notes.Add("本機聽打未使用 GPU 加速（以 CPU 進行，時間較長）");
-        HearbyLog.Write($"transcribe done {track} {slices.Count}片 skip={skipped} fail={failed.Count} loopfix={loopFixes} degen={degenFixes} ran={(int)ranSecs}s/{ranMs / 1000}s gpu={UsedGpu == true}");
+        HearbyLog.Write($"transcribe done {track} {slices.Count}片 skip={skipped} fail={failed.Count} loopfix={loopFixes} degen={degenFixes} ran={(int)trackRanSecs}s/{trackRanMs / 1000}s gpu={UsedGpu == true}");
+        // this PC's speed, for the next meeting's first estimate and the check page. Only from two minutes of audio or more:
+        // a short recording is mostly loading the model and would make the next long meeting look several times slower
+        if (trackRanMs >= 120_000 && trackRanSecs >= 20 && UsedGpu is { } onGpu)
+        {
+            double x = Math.Round(trackRanMs / 1000.0 / trackRanSecs, 2);
+            try { ConfigStore.Shared.Update(c => { if (onGpu) c.WhisperSpeedGPU = x; else c.WhisperSpeedCPU = x; }); } catch { }
+        }
         return segs;
     }
 

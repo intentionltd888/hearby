@@ -12,9 +12,9 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <NoWarn>$(NoWarn);CA1416</NoWarn>
-    <Version>1.0.0</Version>
-    <FileVersion>1.0.0.1</FileVersion>
-    <InformationalVersion>1.0.0 (build 1)</InformationalVersion>
+    <Version>1.1.0</Version>
+    <FileVersion>1.1.0.2</FileVersion>
+    <InformationalVersion>1.1.0 (build 2)</InformationalVersion>
     <Product>Hearby</Product>
     <Company>Hearby</Company>
     <Copyright>MIT License</Copyright>

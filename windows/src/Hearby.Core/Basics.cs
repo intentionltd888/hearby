@@ -6,10 +6,10 @@ namespace Hearby.Core;
 
 public static class HearbyVersion
 {
-    public const string Version = "1.0.0";
-    public const string Build = "1";
+    public const string Version = "1.1.0";
+    public const string Build = "2";
     /// The macOS core this port follows (contract fixtures were generated from it)
-    public const string CoreParity = "2.1.0 (build 22)";
+    public const string CoreParity = "2.1.0 (build 23)";
 }
 
 /// idle → recording → processing → done → idle; any → error → idle

@@ -49,6 +49,12 @@ public sealed class Config
     [JsonPropertyName("whisperModel")] public string? WhisperModel { get; set; }
     /// Transcribe on the GPU (Vulkan) when available; null = on
     [JsonPropertyName("useGPU")] public bool? UseGPU { get; set; }
+    /// What the last transcription ran on, as the engine said it ("Vulkan gpu=1 <device>" / "Cpu gpu=0") + threads; check page
+    [JsonPropertyName("whisperBackend")] public string? WhisperBackend { get; set; }
+    /// Measured speed of the last transcription (seconds of audio per second of work) on the CPU / on the GPU: the next
+    /// meeting's first 「約剩」 and the check page
+    [JsonPropertyName("whisperSpeedCPU")] public double? WhisperSpeedCPU { get; set; }
+    [JsonPropertyName("whisperSpeedGPU")] public double? WhisperSpeedGPU { get; set; }
 
     /// Look for new versions on GitHub in the background (Windows installer); null = on
     [JsonPropertyName("autoUpdate")] public bool? AutoUpdate { get; set; }

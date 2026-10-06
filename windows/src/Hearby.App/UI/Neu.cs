@@ -142,6 +142,21 @@ public static class Neu
 
     // ── material ──
 
+    /// Corners never go past a stadium. WPF draws a corner radius larger than half the height as an elliptical arc (RPill = 999 on
+    /// a 42-high row became a lens with tapered ends, and the inner shadow a second ellipse inside the pill); SwiftUI clamps it.
+    /// So the radius is set to at most half the shorter side, again on every resize.
+    static Border Rounded(double r, Thickness? margin = null)
+    {
+        var b = new Border { CornerRadius = new CornerRadius(r) };
+        if (margin is { } m) b.Margin = m;
+        b.SizeChanged += (_, e) =>
+        {
+            double rr = Math.Min(r, Math.Min(e.NewSize.Width, e.NewSize.Height) / 2);
+            if (b.CornerRadius.TopLeft != rr) b.CornerRadius = new CornerRadius(rr);
+        };
+        return b;
+    }
+
     static void RoundClip(FrameworkElement fe, double r)
     {
         void Update()
@@ -159,13 +174,16 @@ public static class Neu
     public static Grid Inset(UIElement? child, double radius = RCard, double depth = 1, Thickness? padding = null)
     {
         var g = new Grid();
-        g.Children.Add(new Border { Background = Theme.Material, CornerRadius = new CornerRadius(radius) });
-        Border Ring(Color c, double alpha, double dx) => new()
+        var bg = Rounded(radius); bg.Background = Theme.Material;
+        g.Children.Add(bg);
+        Border Ring(Color c, double alpha, double dx)
         {
-            BorderBrush = Theme.Alpha(c, alpha), BorderThickness = new Thickness(7), CornerRadius = new CornerRadius(radius + 7),
-            Margin = new Thickness(-7), IsHitTestVisible = false,
-            RenderTransform = new TranslateTransform(dx, dx), Effect = new BlurEffect { Radius = 7 * depth, KernelType = KernelType.Gaussian },
-        };
+            // 7 wider on every side: radius + 7 keeps it parallel to the shape (clamped the same way)
+            var ring = Rounded(radius + 7, new Thickness(-7));
+            ring.BorderBrush = Theme.Alpha(c, alpha); ring.BorderThickness = new Thickness(7); ring.IsHitTestVisible = false;
+            ring.RenderTransform = new TranslateTransform(dx, dx); ring.Effect = new BlurEffect { Radius = 7 * depth, KernelType = KernelType.Gaussian };
+            return ring;
+        }
         g.Children.Add(Ring(Theme.ShadeColor, (Theme.Dark ? 0.9 : 0.42) * depth, 2.5 * depth));
         g.Children.Add(Ring(Theme.LightColor, 0.95 * depth, -2.5 * depth));
         if (child != null)
@@ -183,9 +201,11 @@ public static class Neu
         var g = new Grid();
         var lightFx = new DropShadowEffect { Color = Theme.LightColor, Direction = 135, ShadowDepth = 2.4 * lift, BlurRadius = 7 * lift, Opacity = 0.9 };
         var shadeFx = new DropShadowEffect { Color = Theme.ShadeColor, Direction = 315, ShadowDepth = 4 * lift, BlurRadius = 9 * lift, Opacity = Theme.Dark ? 0.8 : 0.45 };
-        g.Children.Add(new Border { Background = Theme.Material, CornerRadius = new CornerRadius(radius), Effect = lightFx, IsHitTestVisible = false });
-        g.Children.Add(new Border { Background = Theme.Material, CornerRadius = new CornerRadius(radius), Effect = shadeFx, IsHitTestVisible = false });
-        var face = new Border { Background = Theme.Material, CornerRadius = new CornerRadius(radius), Padding = padding ?? new Thickness(0), Child = child };
+        Border Layer(Effect fx) { var l = Rounded(radius); l.Background = Theme.Material; l.Effect = fx; l.IsHitTestVisible = false; return l; }
+        g.Children.Add(Layer(lightFx));
+        g.Children.Add(Layer(shadeFx));
+        var face = Rounded(radius);
+        face.Background = Theme.Material; face.Padding = padding ?? new Thickness(0); face.Child = child;
         g.Children.Add(face);
         var scale = new ScaleTransform(1, 1);
         g.RenderTransform = scale;
@@ -365,18 +385,22 @@ public static class Neu
 
     /// Status tag (ink only): ready = solid dark dot, pending = mid, missing = hollow
     public enum Level { Ready, Pending, Missing }
+    /// The text wraps under itself (a long check-page line is never cut off at the window edge); the dot stays on the first line
     public static FrameworkElement StatusTag(Level level, string text)
     {
-        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        var row = new Grid();
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         var dot = new Ellipse
         {
-            Width = 7, Height = 7, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center,
+            Width = 7, Height = 7, Margin = new Thickness(0, 5, 6, 0), VerticalAlignment = VerticalAlignment.Top,
             Fill = level == Level.Ready ? Theme.InkStrong : level == Level.Pending ? Theme.InkMid : Brushes.Transparent,
             Stroke = level == Level.Missing ? Theme.InkSoft : null, StrokeThickness = 1,
         };
         row.Children.Add(dot);
         var t = Text(text, TMicro, level == Level.Missing ? Theme.InkSoft : Theme.InkMid);
-        t.VerticalAlignment = VerticalAlignment.Center;
+        t.VerticalAlignment = VerticalAlignment.Top;
+        Grid.SetColumn(t, 1);
         row.Children.Add(t);
         return row;
     }

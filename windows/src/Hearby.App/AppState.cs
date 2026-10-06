@@ -377,7 +377,13 @@ public sealed class AppState
         {
             var p = new Pipeline
             {
-                OnStage = s => Gui.OnUi(() => { Panel.StageText = s; Panel.RaiseChanged(); }),
+                // the countdown changes every few seconds: same stage = only the line under the list is redrawn
+                OnStage = s => Gui.OnUi(() =>
+                {
+                    bool same = UI.PanelWindow.StageIndex(Panel.StageText) == UI.PanelWindow.StageIndex(s);
+                    Panel.StageText = s;
+                    if (same) Panel.RaiseTicked(); else Panel.RaiseChanged();
+                }),
                 OnPartialTranscript = t => Gui.OnUi(() => { Panel.Partial = t; Panel.RaiseChanged(); }),
             };
             try
