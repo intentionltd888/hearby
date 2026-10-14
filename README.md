@@ -15,6 +15,7 @@ macOS 與 Windows 都有。<!-- windows -->
 - **紀錄**：一場一個資料夾，`.md`＋`.m4a`（另可出 `.docx`、PDF、`.srt`）；可以自己改、請 AI 改一段、重新整理全篇、翻譯（英／日／簡中）。
 - **記憶**：`~/Hearby/memory/` 五個純文字檔與 `index.json`，讓你的 AI 知道認識的人、在談的事、還沒完成的事。紀錄改過（重新整理全篇、自己改、請 AI 改一段）記憶跟著換；你在記憶裡改過、打勾、刪掉的行不動，改到既有的行之前先留 `<檔名>.bak-日期`。
 - **名冊**（選用）：在 `memory/` 放一份 `ROSTER.md`（誰是誰、常被聽錯成什麼），整理時人名與案子照名冊寫，逐字稿裡聽錯的名字只改那一行、沒把握的標 `[[?]]`；沒記過的新錯法（唸起來像名冊上的名字）也會挑出來給 AI 看上下文判斷；已定案的事不再列成開放問題。
+- **聽得懂台語**（國台混講；一般版預設關、**台語版**預設開；目前只有 macOS 版）：原本的模型沒把握或漏聽的地方，再交給台語模型（Breeze-ASR-26，約 1.1 GB，下載到這台 Mac）聽一次，台語寫成華語用字；國語為主的會只多聽那幾段。
 - **認聲音**（實驗，macOS 15 以上，預設關）：整理前分出誰在講話；記住過的人（要本人同意）標出名字，摘要與與會者就寫對人。聲紋只存在這台 Mac、可以隨時忘記。
 - **越開會越記得**（記憶開著）：你改過一次的名字記進 `memory/NAMES.md`，下一場自己就對；AI 沒把握的名字在紀錄頁問你一次，答了就不再問；紀錄多一節「之前的事」寫上次的待辦與案子這場怎麼了，做完的自動打勾。
 - **安裝**：DMG 裡拖進「應用程式」或直接雙擊都能裝；四頁設定精靈；`--doctor --deep` 體檢。
@@ -23,7 +24,9 @@ macOS 與 Windows 都有。<!-- windows -->
 
 ## 下載
 
-[**下載 Hearby.dmg**](https://github.com/intentionltd888/hearby/releases/latest/download/Hearby.dmg)（Apple Silicon 的 Mac，macOS 14 以上；已通過 Apple 公證）。打開 DMG，把 Hearby 拖進「應用程式」，或直接雙擊它。
+[**下載 Hearby.dmg**](https://github.com/intentionltd888/hearby/releases/latest/download/Hearby.dmg)　·　[**下載 Hearby 台語版.dmg**](https://github.com/intentionltd888/hearby/releases/download/taigi-v2.1.0/Hearby-Taigi.dmg)（Apple Silicon 的 Mac，macOS 14 以上；已通過 Apple 公證）。打開 DMG，把 Hearby 拖進「應用程式」，或直接雙擊它。
+
+**台語版**＝同一個 Hearby，「聽得懂台語（國台混講）」預設打開：第一次打開會在背景多下載台語模型（約 1.1 GB），原本的模型沒把握或漏聽的地方交給台語模型再聽一次，台語寫成華語用字。只講國語用一般版就好。兩版共用同一個資料夾與設定，裝哪一版都會取代另一版；裝好後在設定裡隨時可以開關。
 
 **Windows**：到 [Releases](https://github.com/intentionltd888/hearby/releases) 找標題有「Windows」的版本，下載 `Hearby-Setup.exe`（目前 1.0.0：[直接下載](https://github.com/intentionltd888/hearby/releases/download/win-v1.0.0/Hearby-Setup.exe)；Windows 10 22H2／Windows 11，x64）。安裝檔沒有數位簽章：Windows 會跳「Windows 已保護您的電腦」→ 按「其他資訊」→「仍要執行」。不需要系統管理員權限，會自動更新。
 
