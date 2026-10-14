@@ -28,7 +28,7 @@ macOS 與 Windows 都有。<!-- windows -->
 
 **台語版**＝同一個 Hearby，「聽得懂台語（國台混講）」預設打開：第一次打開會在背景多下載台語模型（約 1.1 GB），原本的模型沒把握或漏聽的地方交給台語模型再聽一次，台語寫成華語用字。只講國語用一般版就好。兩版共用同一個資料夾與設定，裝哪一版都會取代另一版；裝好後在設定裡隨時可以開關。
 
-**Windows**：到 [Releases](https://github.com/intentionltd888/hearby/releases) 找標題有「Windows」的版本，下載 `Hearby-Setup.exe`（目前 1.0.0：[直接下載](https://github.com/intentionltd888/hearby/releases/download/win-v1.0.0/Hearby-Setup.exe)；Windows 10 22H2／Windows 11，x64）。安裝檔沒有數位簽章：Windows 會跳「Windows 已保護您的電腦」→ 按「其他資訊」→「仍要執行」。不需要系統管理員權限，會自動更新。
+**Windows**：到 [Releases](https://github.com/intentionltd888/hearby/releases) 找標題有「Windows」的版本，下載 `Hearby-Setup.exe`（目前 1.1.1：[直接下載](https://github.com/intentionltd888/hearby/releases/download/win-v1.1.1/Hearby-Setup.exe)；Windows 10 22H2／Windows 11，x64）。安裝檔沒有數位簽章：Windows 會跳「Windows 已保護您的電腦」→ 按「其他資訊」→「仍要執行」。不需要系統管理員權限，會自動更新。
 
 所有版本在 [Releases](https://github.com/intentionltd888/hearby/releases)。哪些東西會離開你的電腦，寫在 [PRIVACY.md](PRIVACY.md)。
 
