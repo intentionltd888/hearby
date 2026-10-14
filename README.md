@@ -15,6 +15,7 @@ macOS 與 Windows 都有。<!-- windows -->
 - **紀錄**：一場一個資料夾，`.md`＋`.m4a`（另可出 `.docx`、PDF、`.srt`）；可以自己改、請 AI 改一段、重新整理全篇、翻譯（英／日／簡中）。
 - **記憶**：`~/Hearby/memory/` 五個純文字檔與 `index.json`，讓你的 AI 知道認識的人、在談的事、還沒完成的事。紀錄改過（重新整理全篇、自己改、請 AI 改一段）記憶跟著換；你在記憶裡改過、打勾、刪掉的行不動，改到既有的行之前先留 `<檔名>.bak-日期`。
 - **名冊**（選用）：在 `memory/` 放一份 `ROSTER.md`（誰是誰、常被聽錯成什麼），整理時人名與案子照名冊寫，逐字稿裡聽錯的名字只改那一行、沒把握的標 `[[?]]`；沒記過的新錯法（唸起來像名冊上的名字）也會挑出來給 AI 看上下文判斷；已定案的事不再列成開放問題。
+- **聽得懂台語**（國台混講，預設關；目前只有 macOS 版）：打開後，原本的模型沒把握的段落再交給台語模型（聯發科 Breeze-ASR-26，約 1.1 GB）聽一次，台語寫成華語用字；國語為主的會只多聽那幾段。研究、選型與實測數字見 [docs/taigi.md](docs/taigi.md)。
 - **認聲音**（實驗，macOS 15 以上，預設關）：整理前分出誰在講話；記住過的人（要本人同意）標出名字，摘要與與會者就寫對人。聲紋只存在這台 Mac、可以隨時忘記。格式見 `AGENTS.md`。
 - **越開會越記得**（記憶開著）：你改過一次的名字記進 `memory/NAMES.md`，下一場自己就對；AI 沒把握的名字在紀錄頁問你一次，答了就不再問；紀錄多一節「之前的事」寫上次的待辦與案子這場怎麼了，做完的自動打勾。
 - **安裝**：DMG 裡拖進「應用程式」或直接雙擊都能裝；四頁設定精靈；`--doctor --deep` 體檢。
@@ -59,6 +60,7 @@ Hearby --memory-rebuild <紀錄.md>                          # 在別的編輯�
 Hearby --rename <紀錄.md 或那一場的資料夾> "新標題"          # 改標題：資料夾、檔名、紀錄表頭、meta、記憶裡的 id、副本一起換
 Hearby --export-word <紀錄.md> --company 公司 --recorder 記錄人   # .docx，Pages 直接開
 Hearby --translate <紀錄.md> --lang en                            # 另存 .en.md
+Hearby --taigi on                                                 # 聽得懂台語（國台混講）：打開，沒有台語模型就先下載
 Hearby --snapshot /tmp/shots                                      # 每個畫面畫成 PNG（設計檢視）
 ```
 
@@ -73,6 +75,7 @@ templates/           Word 三公版、pdf.html、CLAUDE.md／AGENTS.md 範本
 windows/             Windows 版（C#／WPF）：Hearby.Core（核心的 C# 版）、Hearby.App（殼）、合約測試、build.sh——見 windows/README.md
 contract/            macOS 核心在固定輸入下的輸出：Windows 核心照著逐字比對（contract/README.md）
 scripts/             check-clean／check-binary（公開前清洗）、vendor-fetch／build、make-dmg、notarize、ship（出貨閘）
+scripts/taigi/       台語模型轉檔（官方權重 → whisper.cpp）、國台混講實測（行政院國台語平行廣告）——見 docs/taigi.md
 ```
 
 使用者資料全在 `~/Hearby/`（家目錄，不會彈任何權限視窗）。那個資料夾本身就是一個可以被 AI 讀的專案：

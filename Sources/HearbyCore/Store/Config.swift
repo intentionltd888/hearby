@@ -23,6 +23,8 @@ public struct Config: Codable, Equatable {
     public var memoryEnabled: Bool = false
     /// 整理時認聲音（實驗，只有 macOS 15 以上；預設關，見 Voices）
     public var voicesEnabled: Bool = false
+    /// 聽得懂台語（國台混講）：再用台語模型聽一次、台語段換成它的字（預設關；模型約 1 GB，見 Taigi）
+    public var taigiEnabled: Bool = false
     /// 精靈走完了沒；沒走完從第幾頁續
     public var wizardDone: Bool = false
     public var wizardStep: Int = 0
@@ -68,6 +70,7 @@ public struct Config: Codable, Equatable {
         glossaryPath = try c.decodeIfPresent(String.self, forKey: .glossaryPath)
         memoryEnabled = try c.decodeIfPresent(Bool.self, forKey: .memoryEnabled) ?? d.memoryEnabled
         voicesEnabled = try c.decodeIfPresent(Bool.self, forKey: .voicesEnabled) ?? d.voicesEnabled
+        taigiEnabled = try c.decodeIfPresent(Bool.self, forKey: .taigiEnabled) ?? d.taigiEnabled
         wizardDone = try c.decodeIfPresent(Bool.self, forKey: .wizardDone) ?? d.wizardDone
         wizardStep = try c.decodeIfPresent(Int.self, forKey: .wizardStep) ?? d.wizardStep
         scene = try c.decodeIfPresent(String.self, forKey: .scene) ?? d.scene

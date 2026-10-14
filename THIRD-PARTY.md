@@ -4,6 +4,7 @@
 |---|---|---|
 | whisper.cpp、ggml | MIT | 聽打引擎（`vendor/`，不進 git） |
 | Whisper 模型權重（ggml 轉檔版） | MIT | 聽打模型（使用者機器下載） |
+| Breeze-ASR-26（BreezeASR-Taigi，聯發創新基地；whisper.cpp q5_0 轉檔版，可由官方權重重現，見 `scripts/taigi/convert-breeze.sh`） | Apache-2.0 | 聽得懂台語（使用者機器下載，約 1.1 GB，打開「聽得懂台語」時） |
 | FluidAudio（含 fastcluster、VBx 等，見 `licenses/FluidAudio/`） | Apache-2.0（fastcluster：BSD-2-Clause） | 認聲音：說話人分段（macOS 15 以上；編進 app） |
 | 說話人分段模型 FluidInference/speaker-diarization-coreml（pyannote 分段、WeSpeaker 聲紋、BUT Speech@FIT 的 VBx／PLDA，Fluid Inference 轉成 Core ML） | CC-BY-4.0 | 認聲音（使用者機器下載，約 22 MB，打開認聲音後第一次用時） |
 | 漢字轉拼音資料（Unicode CLDR 的 Han-Latin 轉寫，經 macOS `CFStringTransform` 產生成 `PinyinData`） | Unicode License v3（© Unicode, Inc.，全文見本檔最後） | 讀音比對（名冊名字的聽錯寫法） |

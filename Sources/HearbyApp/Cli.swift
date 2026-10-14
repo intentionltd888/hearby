@@ -15,6 +15,7 @@
 //   --snapshot <資料夾> [--dark] [--scale N]  離線把每個畫面畫成 PNG（設計檢視用，不需要螢幕錄製權限；N 倍像素）
 //   --voices  列出這台 Mac 記得的聲音；--voices-scan <md|音檔> 看一場有哪些聲音、認得誰（不存任何東西；md＝分軌還在就分軌切）
 //   --voice-remember <md|音檔> --voice mic:S1 --name 名字 --consent  記住這個聲音（要本人同意）；--voice-forget <名字> 忘記
+//   --taigi [on|off]      聽得懂台語（國台混講）：看狀態／打開（沒有台語模型就先下載）／關掉
 import AppKit
 import Foundation
 import HearbyCore
@@ -28,6 +29,7 @@ enum Cli {
         "--units", "--record", "--source", "--no-process", "--snapshot", "--dark", "--memory-rebuild", "--install", "--eject",
         "--pause-at", "--resume-at", "--export-pdf", "--scale", "--reopen-mic-at", "--stall-mic-at",
         "--voices", "--voices-scan", "--voice-remember", "--voice", "--name", "--consent", "--voice-forget", "--rename",
+        "--taigi",
     ]
     /// 後面要接一個值的旗標
     static let takesValue: Set<String> = [
@@ -51,8 +53,40 @@ enum Cli {
       --voices / --voices-scan <md|音檔>   認聲音（實驗，macOS 15 以上）：記得誰／這場有哪些聲音
       --voice-remember <md|音檔> --voice mic:S1 --name 名字 --consent   記住一個聲音（本人同意才加 --consent）
       --voice-forget <名字>        忘記這個人的聲音
+      --taigi [on|off]             聽得懂台語（國台混講）：看狀態／打開（會先下載台語模型約 1.1 GB）／關掉
       --version / --help
     """
+    /// 國台混講的命令列（見檔頭）
+    static func taigi(_ arg: String?) -> Int32 {
+        switch arg {
+        case "on":
+            try? ConfigStore.shared.update { $0.taigiEnabled = true }
+            if let m = Taigi.modelURL { print("ok  聽得懂台語：開著（台語模型 \(m.path)）"); return 0 }
+            print("下載台語模型（Breeze-ASR-26，約 1.1 GB；中斷了再跑一次會接著下）…")
+            let done = DispatchSemaphore(value: 0)
+            var result: Result<String, Error>?
+            let d = ModelDownload.start(ModelCatalog.taigi) { result = $0; done.signal() }
+            var last = -1
+            while done.wait(timeout: .now() + 2) == .timedOut {
+                let p = Int(d.fraction * 100)
+                if p / 10 != last / 10 { print("  \(p)%"); last = p }
+            }
+            switch result {
+            case .success(let p): print("ok  聽得懂台語：開著（台語模型 \(p)）"); return 0
+            case .failure(let e): FileHandle.standardError.write(Data("✗ \(e.localizedDescription)（設定已打開；模型沒下好之前照舊只用原本的模型）\n".utf8)); return 1
+            case nil: return 1
+            }
+        case "off":
+            try? ConfigStore.shared.update { $0.taigiEnabled = false }
+            print("ok  聽得懂台語：關著（台語模型留著，再打開不用重下）"); return 0
+        case nil:
+            let on = ConfigStore.shared.current.taigiEnabled
+            print("聽得懂台語：\(on ? "開著" : "關著")；台語模型：\(Taigi.modelURL?.path ?? "還沒下載（--taigi on 會下載）")")
+            return 0
+        default:
+            FileHandle.standardError.write(Data("--taigi 後面接 on 或 off（不接＝看狀態）\n".utf8)); return 2
+        }
+    }
     /// 認聲音的命令列（見檔頭）
     static func voices(_ value: (String) -> String?) -> Int32 {
         func mmss(_ t: Double) -> String { let s = Int(t); return s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60) : String(format: "%02d:%02d", s / 60, s % 60) }
@@ -128,6 +162,8 @@ enum Cli {
             if x == "--repolish", let j = a.firstIndex(of: x), a.count > j + 2, !known.contains(a[j + 2]) { skip = 2 }
             // --memory-rebuild 的檔可給可不給
             if x == "--memory-rebuild", let j = a.firstIndex(of: x), a.count > j + 1, !known.contains(a[j + 1]) { skip = 1 }
+            // --taigi 的 on／off 可給可不給
+            if x == "--taigi", let j = a.firstIndex(of: x), a.count > j + 1, !known.contains(a[j + 1]) { skip = 1 }
             // --rename 後面接兩個值（那一場、新標題）；新標題長得像旗標（「--第一季」）也照樣是標題
             if x == "--rename", let j = a.firstIndex(of: x), a.count > j + 2, !known.contains(a[j + 2]) { skip = 2 }
             return true
@@ -145,6 +181,7 @@ enum Cli {
         if set.contains("--voices") || set.contains("--voices-scan") || set.contains("--voice-remember") || set.contains("--voice-forget") {
             return voices(value)
         }
+        if set.contains("--taigi") { return taigi(value(after: "--taigi").flatMap { known.contains($0) ? nil : $0 }) }
         // 出貨閘（build.sh 會跑）：品牌資源包必須能從 app 自己的路徑找到，不能靠開發機的 .build
         if set.contains("--check-resources") {
             if let b = Brand.resourceBundle, Brand.logotype != nil { print("ok  資源包：\(b.bundleURL.path)"); return 0 }

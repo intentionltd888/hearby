@@ -15,6 +15,14 @@ public enum ModelCatalog {
         sha256: "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
         urls: [URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin")!])
 
+    /// 台語模型：聯發創新基地 Breeze-ASR-26（Apache-2.0）的 whisper.cpp q5_0 版。
+    /// 檔案放在社群轉檔的倉（釘版本），但 sha256 是我們從官方權重自己轉出來的那一顆——兩邊逐位元組相同，
+    /// 所以下載到的就是官方權重的轉檔，不是別人改過的（重現步驟：scripts/taigi/convert-breeze.sh）
+    public static var taigi = Spec(
+        id: "taigi", file: "ggml-breeze-asr-26-q5_0.bin", bytes: 1_080_732_108,
+        sha256: "60f25e3a21feca12ec082e6d36f08f94455d9900d6343f7fcb2906f71cc7c449",
+        urls: [URL(string: "https://huggingface.co/weemed/Breeze-ASR-26-GGML/resolve/16b8f9a257a99e0d21baa2667f3ffdc881b8e445/breeze-q5_0.bin")!])
+
     /// 來源順序：使用者設定的鏡像（選填）→ 官方
     public static func sources(_ s: Spec) -> [URL] {
         var out: [URL] = []

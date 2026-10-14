@@ -106,6 +106,8 @@ enum Snapshot {
         let winSize = NSSize(width: 840, height: 660)
         shoot("window", MainWindow(actions: actions).padding(.top, 22), size: winSize)
         shoot("window-settings", MainWindow(actions: actions, initialTab: 1).padding(.top, 22), size: winSize)
+        // 設定整頁（拉長到每張卡都看得到：聽得懂台語、認聲音在下半頁）
+        shoot("window-settings-full", MainWindow(actions: actions, initialTab: 1).padding(.top, 22), size: NSSize(width: 840, height: 2400))
         shoot("window-check", MainWindow(actions: actions, initialTab: 2).padding(.top, 22), size: winSize)
         // 清單改標題：滑過最新那場（出現筆）、正在改它的標題
         if let it = latest {

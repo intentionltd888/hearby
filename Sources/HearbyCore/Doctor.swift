@@ -1,6 +1,6 @@
 // Doctor — 七項狀態，一次看完（CLI --doctor 與設定頁「檢查現在正不正常」共用）
 //
-// 七項：①系統 ②麥克風 ③系統聲 ④聽打模型 ⑤整理方式 ⑥磁碟 ⑦資料夾
+// 七項：①系統 ②麥克風 ③系統聲 ④聽打模型 ⑤整理方式 ⑥磁碟 ⑦資料夾（設定打開「聽得懂台語」時 ④ 後面多一項台語模型）
 // 每項一行：ok／warn／missing／unknown＋一句人話。不猜、不裝死：查不到就寫 unknown 與原因。
 
 import AVFoundation
@@ -39,9 +39,21 @@ public struct DoctorReport {
 
 public enum Doctor {
     public static func run(deep: Bool = false) -> DoctorReport {
-        DoctorReport(items: [
-            system(), microphone(), systemAudio(), model(), provider(deep: deep), disk(), folder(),
-        ])
+        // 設定裡打開「聽得懂台語」才多一項（關著的人不用看到）
+        let taigi = ConfigStore.shared.current.taigiEnabled ? [taigiModel()] : []
+        return DoctorReport(items: [system(), microphone(), systemAudio(), model()] + taigi + [provider(deep: deep), disk(), folder()])
+    }
+
+    // ④-2 台語模型（設定打開才查）
+    static func taigiModel() -> DoctorItem {
+        guard let m = Taigi.modelURL else {
+            return DoctorItem("台語模型", .missing, "還沒下載（1.1 GB）——設定頁「聽得懂台語」那張卡會在背景下；命令列 --taigi on 也行")
+        }
+        let size = (try? FileManager.default.attributesOfItem(atPath: m.resolvingSymlinksInPath().path)[.size] as? Int64) ?? 0
+        if size != ModelCatalog.taigi.bytes {
+            return DoctorItem("台語模型", .warn, "檔案大小不對——可能沒下載完。把它移走後重新打開「聽得懂台語」會重下：\(m.path)")
+        }
+        return DoctorItem("台語模型", .ok, "已在（Breeze-ASR-26，1.0 GB）；原本的模型沒把握或漏聽的地方會再用它聽一次")
     }
 
     // ① 系統：macOS 14+、Apple Silicon

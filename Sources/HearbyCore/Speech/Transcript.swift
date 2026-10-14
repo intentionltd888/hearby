@@ -310,6 +310,53 @@ public final class Transcriber {
         return (out, fixed)
     }
 
+    /// 國台混講的第二遍：主模型沒把握的地方（含跳過沒出字的空檔）一截截剪出來，台語模型一次聽完，兩邊比把握後合併（見 Taigi）。
+    /// 台語模型跑不起來、某截結果在打轉＝那截照用主模型的字，不擋整場。
+    private func taigiPass(segs: [Segment], primaryJSON: URL, from a: Int, to b: Int, wav: URL, boosted: Bool, who: String,
+                           name: String, workDir: URL, sliceDir: URL, cli: String, model: String, env: [String: String],
+                           stageText: String) -> (segs: [Segment], switchedMs: Int, sentMs: Int) {
+        let pScores = Taigi.scores(primaryJSON, offsetMs: a)
+        let pcm = WavIO.readPCM(wav, fromMs: a, toMs: b)
+        // 小聲片放大過的那一片：音量與送出去的音都照同樣倍數（跟主模型聽的是同一份）
+        let gain: Float? = boosted ? Self.quietBoost(levels: WavIO.blockLevels(pcm), pcm: pcm) : nil
+        let levels = WavIO.blockLevels(gain.map { g in pcm.map { Int16(max(-32767, min(32767, (Float($0) * g).rounded()))) } } ?? pcm)
+        let spans = Taigi.spans(segs, scores: pScores, levels: levels, from: a, to: b)
+        guard !spans.isEmpty else { return (segs, 0, 0) }
+        let sent = spans.reduce(0) { $0 + $1.1 - $1.0 }
+        let bases = spans.indices.map { workDir.appendingPathComponent(String(format: "%@-taigi%03d", name, $0)) }
+        // 續跑：截是從同一份主模型結果算的，JSON 都在就直接用
+        if bases.contains(where: { !FileManager.default.fileExists(atPath: $0.path + ".json") }) {
+            stage(stageText)
+            var args = ["-m", model, "-l", "zh", "-t", "\(WhisperEngine.perfCores)", "--prompt", Self.prompt, "--carry-initial-prompt", "-ojf", "-np"]
+            var wavs: [URL] = []
+            for ((f, t), base) in zip(spans, bases) {
+                let w = sliceDir.appendingPathComponent(base.lastPathComponent + ".wav")
+                let ok = gain.map { WavIO.writePCM(WavIO.readPCM(wav, fromMs: f, toMs: t), gain: $0, to: w) } ?? WavIO.writeSlice(from: wav, fromMs: f, toMs: t, to: w)
+                guard ok else { continue }
+                wavs.append(w); args += ["-f", w.path, "-of", base.path]
+            }
+            let r = runProcess(cli, args, env: env, timeout: max(600, Double(sent) / 1000 * 8))
+            for w in wavs { try? FileManager.default.removeItem(at: w) }
+            if r.status != 0 { HearbyLog.write("taigi \(name) fail (\(r.status)): \(String(r.stderr.suffix(200)))") }
+        }
+        var results: [Taigi.SpanResult] = []
+        for ((f, t), base) in zip(spans, bases) {
+            let json = URL(fileURLWithPath: base.path + ".json")
+            guard let p = try? Self.parseWhisperJSON(json, offsetMs: f, who: who), !p.segs.isEmpty, p.rawRepeat <= 0.25 else { continue }
+            // 不看「缺標點」：台語模型本來就不加標點（用空格斷句），那條是給主模型抓退化用的
+            let sc = Taigi.scores(json, offsetMs: f)
+            var segs: [Segment] = [], scores: [String: Taigi.Score] = [:]
+            for s in p.segs {
+                let c = Segment(fromMs: max(f, s.fromMs), toMs: min(t, max(s.toMs, s.fromMs + 1)), text: Taigi.punctuate(s.text), who: s.who)
+                segs.append(c); scores[Taigi.key(c)] = sc[Taigi.key(s)]
+            }
+            results.append(Taigi.SpanResult(from: f, to: t, segs: segs, scores: scores))
+        }
+        let m = Taigi.merge(primary: segs, primaryScores: pScores, results: results)
+        HearbyLog.write("taigi \(name) spans=\(spans.count) sent=\(sent / 1000)s switched=\(m.switched) (\(m.switchedMs / 1000)s)")
+        return (m.segs, m.switchedMs, sent)
+    }
+
     /// 轉寫一軌。空檔／讀不到＝回空陣列＋備註，不 throw。
     /// cuts＝一定要切開的位置（毫秒；中途暫停的地方），見 planSlices
     public func transcribe(wav: URL, who: String, label: String, workDir: URL, track: String, cuts: [Int] = [], onPartial: (([Segment]) -> Void)? = nil) throws -> [Segment] {
@@ -320,7 +367,10 @@ public final class Transcriber {
             notes.append("\(label)音軌沒有錄到任何內容（檔案是空的），這份紀錄不含這一軌")
             return []
         }
-        HearbyLog.write("transcribe start \(track) \(totalMs / 60000)min")
+        // 國台混講（設定打開、台語模型在）：主模型多吐每個字的機率（-ojf），拿來判斷哪幾段沒把握（見 Taigi）
+        let taigiModel = Taigi.enabled ? Taigi.modelURL?.path : nil
+        let ojf = taigiModel == nil ? [] : ["-ojf"]
+        HearbyLog.write("transcribe start \(track) \(totalMs / 60000)min taigi=\(taigiModel != nil)")
         let env = WhisperEngine.env(forCLI: cli)
         let target = usedMetal == false ? 5 * 60_000 : Self.sliceTargetMs
         let slices = Self.planSlices(wav: wav, totalMs: totalMs, targetMs: target, forcedCuts: cuts)
@@ -334,6 +384,7 @@ public final class Transcriber {
         var loopFixes = 0
         var degenFixes = 0
         var degenLeft: [(Int, Int)] = []
+        var taigiMs = 0, taigiSent = 0
         var ranMs = 0
         var ranSecs: TimeInterval = 0
         let partial = workDir.appendingPathComponent("transcript.partial-\(track).md")
@@ -379,7 +430,7 @@ public final class Transcriber {
                 // 用 systemUptime 計時：電腦睡著時它不走，ran= 與「約剩」才是真的算力時間（Date() 會把闔蓋睡掉的 25 分鐘算進去，看起來像聽打很慢）
                 let t0 = ProcessInfo.processInfo.systemUptime
                 for attempt in 1...2 {
-                    let r = runWhisper(cli: cli, model: model, wav: sliceURL, jsonBase: jsonURL.deletingPathExtension(), extra: [], env: env, timeout: max(600, Double(b - a) / 1000 * 4))
+                    let r = runWhisper(cli: cli, model: model, wav: sliceURL, jsonBase: jsonURL.deletingPathExtension(), extra: ojf, env: env, timeout: max(600, Double(b - a) / 1000 * 4))
                     if usedMetal == nil {
                         usedMetal = r.stderr.contains("ggml_metal_device_init")
                         HearbyLog.write("whisper metal=\(usedMetal == true)")
@@ -400,6 +451,7 @@ public final class Transcriber {
                 boostedSpans.append((a, b))
             }
             var sliceSegs = parsed?.segs ?? []
+            var primaryJSON = jsonURL   // 主模型最後採用的那份（退化重轉採用了就換成重轉的）：國台混講要讀它的每字機率
             let deg = Self.degeneracy(sliceSegs, rawRepeatRatio: parsed?.rawRepeat ?? 0)
             if deg.bad, !sliceSegs.isEmpty {
                 let retryJSON = workDir.appendingPathComponent(name + "-r.json")
@@ -416,19 +468,27 @@ public final class Transcriber {
                     }
                     if wrote {
                         HearbyLog.write(String(format: "degen retry %@ score=%.3f", name, deg.score))
-                        _ = runWhisper(cli: cli, model: model, wav: sliceURL, jsonBase: retryJSON.deletingPathExtension(), extra: ["-mc", "16"], env: env, timeout: max(600, Double(b - a) / 1000 * 4))
+                        _ = runWhisper(cli: cli, model: model, wav: sliceURL, jsonBase: retryJSON.deletingPathExtension(), extra: ["-mc", "16"] + ojf, env: env, timeout: max(600, Double(b - a) / 1000 * 4))
                         retry = try? Self.parseWhisperJSON(retryJSON, offsetMs: a, who: who)
                         try? FileManager.default.removeItem(at: sliceURL)
                     }
                 }
                 if let r = retry, !r.segs.isEmpty, Self.degeneracy(r.segs, rawRepeatRatio: r.rawRepeat).score > deg.score {
-                    parsed = r; sliceSegs = r.segs; degenFixes += 1
+                    parsed = r; sliceSegs = r.segs; degenFixes += 1; primaryJSON = retryJSON
                 } else { degenLeft.append((a, b)) }
             }
             if let loops = parsed?.loops, !loops.isEmpty {
                 let (fixedSegs, n) = repairLoops(segs: sliceSegs, loops: loops, sliceFrom: a, sliceTo: b, wav: wav, who: who, name: name, label: label, workDir: workDir, sliceDir: sliceDir, cli: cli, model: model, env: env)
                 sliceSegs = fixedSegs
                 loopFixes += n
+            }
+            if let tm = taigiModel, !sliceSegs.isEmpty {
+                let t0 = ProcessInfo.processInfo.systemUptime
+                let r = taigiPass(segs: sliceSegs, primaryJSON: primaryJSON, from: a, to: b, wav: wav, boosted: boosted, who: who,
+                                  name: name, workDir: workDir, sliceDir: sliceDir, cli: cli, model: tm, env: env,
+                                  stageText: "聽台語\(label)" + (slices.count > 1 ? " \(i + 1)/\(slices.count)" : "") + "…")
+                ranSecs += ProcessInfo.processInfo.systemUptime - t0
+                sliceSegs = r.segs; taigiMs += r.switchedMs; taigiSent += r.sentMs
             }
             for s in sliceSegs {
                 if let last = segs.last, last.text == s.text { continue }
@@ -459,8 +519,11 @@ public final class Transcriber {
             let spans = degenLeft.prefix(2).map { "\(Fmt.ts($0.0))–\(Fmt.ts($0.1))" }.joined(separator: "、")
             notes.append("\(label)音軌 \(spans) 附近語音辨識品質異常（重複或缺標點），內容可能不完整")
         }
+        if taigiMs > 0 {
+            notes.append("\(label)音軌約 \(Fmt.dur(Double(taigiMs) / 1000)) 原本的模型沒把握或漏聽（多半是台語），改用台語模型（Breeze-ASR-26）聽打；台語寫成華語用字")
+        }
         if usedMetal == false, !notes.contains(where: { $0.contains("CPU") }) { notes.append("本機聽打未使用 GPU 加速（以 CPU 進行，時間較長）") }
-        HearbyLog.write("transcribe done \(track) \(slices.count)片 skip=\(skipped) fail=\(failed.count) loopfix=\(loopFixes) degen=\(degenFixes) ran=\(Int(ranSecs))s/\(ranMs / 1000)s metal=\(usedMetal == true)")
+        HearbyLog.write("transcribe done \(track) \(slices.count)片 skip=\(skipped) fail=\(failed.count) loopfix=\(loopFixes) degen=\(degenFixes) taigi=\(taigiSent / 1000)s→\(taigiMs / 1000)s ran=\(Int(ranSecs))s/\(ranMs / 1000)s metal=\(usedMetal == true)")
         return segs
     }
 
